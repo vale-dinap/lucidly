@@ -177,9 +177,6 @@ svg { flex: none; }
 }
 .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 .toolbar .vseg { margin-right: 6px; flex: none; }
-.toolbar .tb-icon { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--r); }
-.toolbar .search { flex: 1 1 130px; max-width: 210px; }
-.toolbar .search input { width: 100%; }
 .pane.pin-ov { scroll-padding-top: calc(var(--ov-h, 0px) + 64px); }
 .pane.pin-ov #overview { position: sticky; top: 0; z-index: 5; background: var(--bg); }
 .pane.pin-ov .toolbar { top: var(--ov-h, 0px); }
@@ -872,3 +869,41 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .md-table th { background: var(--sunken); font-weight: 600; white-space: nowrap; }
 .md-table tbody tr:last-child td { border-bottom: 0; }
 .md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--sunken) 45%, transparent); }
+
+/* ───────── toolbar: filter chips, folding into a menu when the row is too narrow */
+.chips { flex-wrap: nowrap; align-items: center; }
+.chips-row { display: flex; gap: 4px; }
+.fsel { position: relative; display: none; }
+.toolbar.tight .chips-row { display: none; }
+.toolbar.tight .fsel { display: block; }
+.fsel-b {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 12px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+  cursor: pointer; font-size: 12.5px; font-weight: 520; white-space: nowrap;
+}
+.fsel-b:hover, .fsel-b.open { border-color: var(--border-strong); }
+.fsel-b .n { color: var(--faint); font-size: 11.5px; font-weight: 500; }
+.fsel-b .dd { width: 14px; height: 14px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s; }
+.fsel-b.open .dd { transform: rotate(180deg); }
+.fsel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+.fsel-menu {
+  position: absolute; left: 0; top: 34px; z-index: 20; min-width: 190px; padding: 5px; border-radius: var(--r-lg);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  animation: fsel-in 0.14s ease-out;
+}
+@keyframes fsel-in { from { opacity: 0; transform: translateY(-4px); } }
+.fsel-menu button {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: 30px; padding: 0 10px;
+  border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.fsel-menu button:hover:not(:disabled) { background: var(--hover); }
+.fsel-menu button.on { background: var(--accent-bg); color: var(--accent); font-weight: 560; }
+.fsel-menu button:disabled { color: var(--faint); cursor: default; }
+.fsel-menu .n { color: var(--faint); font-size: 11.5px; }
+.fsel-menu button.bad .n { color: var(--bad); font-weight: 600; }
+/* search: a magnifier until you use it */
+.toolbar .search { flex: none; max-width: none; }
+.toolbar .search input { width: 210px; transition: width 0.2s ease-out, padding 0.2s ease-out; }
+.toolbar .search:not(:focus-within):has(input:placeholder-shown) input { width: 30px; padding-right: 0; cursor: pointer; color: transparent; }
+.toolbar .search:not(:focus-within):has(input:placeholder-shown) input::placeholder { color: transparent; }
+.toolbar .search svg { pointer-events: none; }

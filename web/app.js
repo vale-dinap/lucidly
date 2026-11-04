@@ -35,7 +35,7 @@ const S = {
   lastFollowTarget: null,
   view: 'path', // 'path' | 'actions'
   // The path view's layout: 'simple' (tasks as nodes) or 'detailed' (cards with every step).
-  layout: localStorage.getItem('lucidly.layout') === 'detailed' ? 'detailed' : 'simple',
+  layout: ['detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'simple',
   // Keep the overview (stats and timeline) on screen while scrolling.
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // path view
@@ -382,7 +382,7 @@ const goalOf = (id) => ancestors(id).pop();
 function pathQuery() {
   return S.pf.q.trim().toLowerCase();
 }
-const filtering = () => (S.layout !== 'simple' && S.pf.mode !== 'all') || !!pathQuery();
+const filtering = () => S.pf.mode !== 'all' || !!pathQuery();
 
 function stepText(s) {
   return [
@@ -1116,13 +1116,15 @@ function taskHtml(g, q) {
   if (!g) return '';
   const steps = kids(g).filter((c) => c.type === 'step');
   const qa = isQA(g);
-  if (qa && S.pf.hideChat) return '';
+  const mode = S.pf.mode;
+  if (qa && S.pf.hideChat && mode === 'all') return '';
+  if (mode === 'qa' && !qa) return '';
+  if (qa && mode !== 'all' && mode !== 'qa') return '';
   let shown = steps;
   if (filtering()) {
-    if (qa && S.pf.mode !== 'all') return '';
-    const gm = !!q && (g.title.toLowerCase().includes(q) || (g.intent ?? '').toLowerCase().includes(q));
+    const gm = !!q && (g.title.toLowerCase().includes(q) || (g.intent ?? '').toLowerCase().includes(q) || (g.outcome ?? '').toLowerCase().includes(q));
     shown = steps.filter((s) => stepMatches(s, gm ? '' : q));
-    if (!shown.length && !(gm && S.pf.mode === 'all')) return '';
+    if (!shown.length && !(qa && (!q || gm)) && !(gm && mode === 'all')) return '';
   }
   const open = isGoalOpen(g);
   const done = steps.filter((s) => s.status === 'done').length;
@@ -1223,7 +1225,7 @@ function flowOpen(g, q, hit) {
   if (S.openGoals.has(g.id)) return true;
   if (S.closedGoals.has(g.id)) return false;
   if (S.expandAll) return true;
-  if (q) return hit;
+  if (q || (S.pf.mode !== 'all' && S.pf.mode !== 'qa')) return hit;
   return g.id === S.run.currentGoal || S.run.goals.length === 1;
 }
 
@@ -1255,7 +1257,7 @@ function chainItems(g, q) {
     const st = stepState(s);
     const a = s.stats?.actions ?? 0;
     const rec = st !== 'bad' && hasRecovered(s);
-    const dim = q && !stepMatches(s, q) ? ' dim' : '';
+    const dim = (q || S.pf.mode !== 'all') && !stepMatches(s, q) ? ' dim' : '';
     const tip = [
       `${i + 1}. ${s.title}`,
       [a ? plural(a, 'action') : 'no actions yet', kind !== 'todo' ? `mostly ${KIND_LABEL[kind]}` : '', s.startedAt ? dur(s.startedAt, liveEnd(s)) : ''].filter(Boolean).join(' · '),
@@ -1434,8 +1436,40 @@ function setExpandBtn(collapse) {
   if (b.title === label) return;
   b.title = label;
   b.setAttribute('aria-label', label);
-  b.innerHTML = SVG(collapse ? 'M8 4l4 4 4-4 M8 20l4-4 4 4' : 'M8 8l4-4 4 4 M8 16l4 4 4-4');
+  b.textContent = collapse ? 'Collapse all' : 'Expand all';
 }
+
+const MODE_LABEL = { all: 'All', open: 'Failed', recovered: 'Recovered', agents: 'Subagents', qa: 'Questions' };
+
+/** The filters as chips, plus the same as a menu for when the toolbar is too narrow for chips. */
+function modesHtml(modes, nOpen) {
+  const cur = S.pf.mode;
+  const chips = modes
+    .filter(([m, , n]) => m === 'all' || n || cur === m)
+    .map(([m, label, n, cls]) => `<button class="chip-f${cur === m ? ' on' : ''} ${n ? cls : ''}" data-mode="${m}">${label}${n !== null ? ` <span class="n">${n}</span>` : ''}</button>`)
+    .join('');
+  const n = modes.find(([m]) => m === cur)?.[2];
+  const alert = nOpen && cur !== 'open' ? `<i class="fsel-dot" title="${plural(nOpen, 'step')} with failures nothing has fixed yet"></i>` : '';
+  const menu = S.fselOpen
+    ? `<div class="fsel-menu" role="menu">${modes
+        .map(([m, label, k, cls]) => `<button type="button" role="menuitemradio" aria-checked="${cur === m}" class="${cur === m ? 'on' : ''} ${k ? cls : ''}" data-mode="${m}"${m !== 'all' && !k && cur !== m ? ' disabled' : ''}><span>${label}</span>${k !== null ? `<span class="n">${k}</span>` : ''}</button>`)
+        .join('')}</div>`
+    : '';
+  return `<div class="chips-row">${chips}</div><div class="fsel"><button type="button" class="fsel-b${S.fselOpen ? ' open' : ''}" data-fsel aria-haspopup="menu" aria-expanded="${!!S.fselOpen}" title="Show">${MODE_LABEL[cur] ?? 'All'}${n ? ` <span class="n">${n}</span>` : ''}${alert}${SVG('M7 10l5 5 5-5', 'dd')}</button>${menu}</div>`;
+}
+
+/** Chips while they fit on one row with the rest of the toolbar; a menu when they don't. */
+function fitToolbar() {
+  const tb = $('#tbPath');
+  if (tb.hidden) return;
+  tb.classList.remove('tight');
+  const kids = [...tb.children].filter((el) => el.offsetParent !== null);
+  // Items are centred on the row: an item whose middle sits lower than the first one's has wrapped.
+  const mid = (el) => el.offsetTop + el.offsetHeight / 2;
+  const wrapped = kids.length > 1 && kids.some((el) => mid(el) > mid(kids[0]) + 10);
+  tb.classList.toggle('tight', wrapped);
+}
+new ResizeObserver(() => fitToolbar()).observe($('#pane'));
 
 function renderPath() {
   const q = pathQuery();
@@ -1450,54 +1484,58 @@ function renderPath() {
         if (hasRecovered(s)) nRec++;
         if (hasAgent(s)) nAgents++;
       }
+  const nQA = goals.filter(isQA).length;
   const modes = [
     ['all', 'All', null, ''],
     ['open', 'Failed', nOpen, 'bad'],
     ['recovered', 'Recovered', nRec, ''],
     ['agents', 'Subagents', nAgents, ''],
-    ['files', 'File edits', S.actions ? fileEdits().filter((f) => f.inside).length || fileEdits().length : 0, ''],
+    ['qa', 'Questions', nQA, ''],
   ];
-  $('#pathModes').innerHTML = modes
-    .filter(([m, , n]) => m === 'all' || n || S.pf.mode === m)
-    .map(([m, label, n, cls]) => `<button class="chip-f${S.pf.mode === m ? ' on' : ''} ${n ? cls : ''}" data-mode="${m}">${label}${n !== null ? ` <span class="n">${n}</span>` : ''}</button>`)
-    .join('');
+  const files = S.layout === 'files';
   const simple = S.layout === 'simple';
-  $('#pathModes').hidden = simple;
-  // Hide Q&A works in both layouts: always in place (a toolbar that reshuffles is hard to use),
-  // and always usable (a switch that locks itself is more confusing than one with nothing to do).
-  $('#hideChat').checked = S.pf.hideChat;
-  $('#hideChat').disabled = false;
+  const view = $('#pathView');
+  $('#pathModes').hidden = files;
+  $('#hideChat').closest('.switch').hidden = files;
+  if (!files) setHTML($('#pathModes'), modesHtml(modes, nOpen));
+  // Hide Q&A only means something in All: the other filters leave questions out anyway, and
+  // Questions shows nothing else. Elsewhere it stays in place, greyed out (no reshuffling).
   const sw = $('#hideChat').closest('.switch');
-  const nQA = goals.filter(isQA).length;
-  sw.classList.remove('off');
-  sw.title = !simple && S.pf.mode === 'files'
-    ? 'Applies to the task list, not to File edits'
+  const applies = S.pf.mode === 'all';
+  $('#hideChat').checked = S.pf.hideChat && applies;
+  $('#hideChat').disabled = !applies;
+  sw.classList.toggle('off', !applies);
+  sw.title = !applies
+    ? `Only applies to All: ${S.pf.mode === 'qa' ? 'Questions shows only them' : 'this filter already leaves questions out'}`
     : nQA
       ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
       : 'No questions answered without work in this run yet: nothing to hide for now';
-  if (simple) {
-    setExpandBtn(S.expandAll);
-    $('#pathSearch').placeholder = 'Search steps, files, commands';
-    const view = $('#pathView');
-    view.classList.remove('working');
-    renderFlow(view, S.pf.hideChat ? goals.filter((g) => !isQA(g)) : goals, q);
-    return;
-  }
-  if ($('#pathView').__flow) {
-    $('#pathView').__flow = false;
-    $('#pathView').__html = null;
-  }
-  setExpandBtn(S.pf.mode === 'files' ? S.ff.open.size > 0 : S.expandAll);
-  $('#pathSearch').placeholder = S.pf.mode === 'files' ? 'Filter files and edits' : 'Search steps, files, commands';
-  if (S.pf.mode === 'files') {
-    const view = $('#pathView');
+  setExpandBtn(files ? S.ff.open.size > 0 : S.expandAll);
+  $('#pathSearch').placeholder = files ? 'Filter files and edits' : 'Search steps, files, commands';
+  requestAnimationFrame(fitToolbar);
+  if (files) {
+    if (view.__flow) {
+      view.__flow = false;
+      view.__html = null;
+    }
     view.classList.remove('working');
     setHTML(view, filesHtml(q));
     return;
   }
-
+  if (simple) {
+    view.classList.remove('working');
+    const mode = S.pf.mode;
+    const shown = goals.filter((g) =>
+      mode === 'qa' ? isQA(g) : mode === 'all' ? !(S.pf.hideChat && isQA(g)) : kids(g).some((s) => s.type === 'step' && stepMatches(s, '')),
+    );
+    renderFlow(view, shown, q);
+    return;
+  }
+  if (view.__flow) {
+    view.__flow = false;
+    view.__html = null;
+  }
   const html = goals.map((g) => taskHtml(g, q)).join('');
-  const view = $('#pathView');
   view.classList.toggle('working', S.run.status === 'working' && !isStale());
   setHTML(
     view,
@@ -1607,7 +1645,7 @@ function rawFor(id) {
         entry.loading = false;
         entry.at = Date.now();
         if (S.selected === id) renderDetail();
-        if (S.view === 'path' && S.pf.mode === 'files') schedule();
+        if (S.view === 'path' && S.layout === 'files') schedule();
       }
     }, entry.chunks ? wait : 0);
   }
@@ -2214,7 +2252,7 @@ function renderActions() {
 }
 
 function setView(v) {
-  if (v === 'simple' || v === 'detailed') {
+  if (v === 'simple' || v === 'detailed' || v === 'files') {
     S.layout = v;
     localStorage.setItem('lucidly.layout', v);
     v = 'path';
@@ -2603,7 +2641,16 @@ document.addEventListener('click', (e) => {
   if (on('#emptyOpen')) return void openPicker();
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
   if (on('[data-pin]')) return togglePin();
+  if (on('[data-fsel]')) {
+    S.fselOpen = !S.fselOpen;
+    return schedule();
+  }
+  if (S.fselOpen && !on('.fsel-menu')) {
+    S.fselOpen = false;
+    schedule();
+  }
   if ((el = on('[data-mode]'))) {
+    S.fselOpen = false;
     S.pf.mode = el.dataset.mode;
     return schedule();
   }
@@ -2736,7 +2783,7 @@ document.addEventListener('click', (e) => {
   }
   if (on('#copyCommands')) return void copyCommands();
   if (on('#expandAll')) {
-    if (S.view === 'path' && S.pf.mode === 'files') {
+    if (S.view === 'path' && S.layout === 'files') {
       if (S.ff.open.size) S.ff.open.clear();
       else for (const f of fileEdits()) S.ff.open.add(f.key);
       return schedule();
@@ -2928,7 +2975,7 @@ function fold(els, open) {
 }
 $('#hideChat').addEventListener('change', async (e) => {
   const hide = e.target.checked;
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches || S.view !== 'path' || S.pf.mode === 'files';
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches || S.view !== 'path' || S.layout === 'files';
   if (hide && !calm) await fold(qaEls(), false);
   S.pf.hideChat = hide;
   render();
@@ -3008,7 +3055,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'f' || e.key === 'End') jumpToEnd();
-  else if (e.key === 'v') setView(S.view === 'actions' ? 'simple' : S.layout === 'simple' ? 'detailed' : 'actions');
+  else if (e.key === 'v') setView(S.view === 'actions' ? 'simple' : S.layout === 'simple' ? 'detailed' : S.layout === 'detailed' ? 'files' : 'actions');
   else if (e.key === 'e' && S.view === 'path') $('#expandAll').click();
   else if (e.key === '/') {
     e.preventDefault();
@@ -3039,3 +3086,5 @@ setInterval(() => S.run && renderHeader(), 15000);
   else if (runs.length) connect(runs[runs.length - 1].id);
   else render();
 })();
+// The search box widens while in use: re-check whether the filter chips still fit.
+for (const ev of ['focus', 'blur']) $('#pathSearch').addEventListener(ev, () => setTimeout(fitToolbar, 230));
