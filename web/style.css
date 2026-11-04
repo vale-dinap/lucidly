@@ -820,3 +820,26 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .fg.enter .fg-n { animation: fn-pop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
 @keyframes fg-in { from { opacity: 0; transform: translateY(10px); } }
 #overview.compact .strip { margin-top: 6px; }
+
+/* ───────── keep awake */
+.wake-wrap { position: relative; margin-left: 4px; }
+.wake { color: var(--faint); }
+.wake svg { width: 17px; height: 17px; }
+.wake .steam { opacity: 0; transition: opacity 0.3s; }
+.wake[data-wake='awake'] { color: var(--accent); }
+.wake[data-wake='awake'] .steam { opacity: 1; animation: steam 2.4s ease-in-out infinite; }
+.wake[data-wake='wait'] { color: var(--muted); }
+.wake[data-wake='err'] { color: var(--bad); }
+@keyframes steam { 50% { opacity: 0.35; transform: translateY(-0.6px); } }
+.wake-pop { left: 0; right: auto; width: 330px; }
+.wk-row { display: flex; color: var(--text); font-size: 13px; margin: 2px 0 10px; }
+.wk-opt { display: flex; gap: 9px; align-items: flex-start; margin: 0 0 10px 2px; cursor: pointer; font-size: 12.5px; }
+.wk-opt input { margin: 2px 0 0; accent-color: var(--accent); }
+.wk-opt b { font-weight: 560; }
+.wk-opt small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; line-height: 1.35; }
+.wk-st { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: var(--r); background: var(--sunken); font-size: 12px; color: var(--muted); }
+.wk-st i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.wk-st.st-awake { color: var(--text); }
+.wk-st.st-awake i { background: var(--accent); animation: now-pulse 1.8s ease-in-out infinite; }
+.wk-st.st-err i { background: var(--bad); }
+.wk-note { margin: 8px 0 0; color: var(--faint); font-size: 11px; line-height: 1.4; }

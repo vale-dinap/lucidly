@@ -21,6 +21,12 @@
         <div class="run-sub" id="runSub"></div>
       </div>
       <span class="pill" id="status" data-status="idle"><i></i><span id="statusText">Idle</span></span>
+      <div class="wake-wrap">
+        <button class="ibtn wake" id="wakeBtn" aria-haspopup="dialog" aria-label="Keep this device awake" title="Keep this device awake">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="steam" d="M9 3.5c-.8.9.8 1.6 0 2.5 M12.5 3.5c-.8.9.8 1.6 0 2.5" /><path d="M5 9h11v4.5A5.5 5.5 0 0 1 10.5 19h0A5.5 5.5 0 0 1 5 13.5z M16 10.5h1.2a2.5 2.5 0 0 1 0 5H15.6 M4 21h13" /></svg>
+        </button>
+        <div class="pop wake-pop" id="wakePop" hidden></div>
+      </div>
       <div class="grow"></div>
       <div class="meter-wrap">
         <span class="pill warn" id="outdated" hidden title="Lucidly's engine was updated after this server started. Stop it and run lucidly again to apply the update: some data (such as token counts) may be missing until then.">Restart Lucidly to update</span>

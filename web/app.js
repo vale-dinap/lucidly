@@ -1453,6 +1453,7 @@ function renderHeader() {
     save.setAttribute('aria-disabled', 'true');
   }
   renderTokens();
+  void syncWake(); // the run's state decides whether "only while working" holds the lock
   const shown = S.view === 'actions' ? 'actions' : S.layout;
   for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === shown);
 }
@@ -2312,6 +2313,106 @@ async function loadFile(file) {
 }
 
 // ───────────────────────────── interaction
+// ───────────────────────────── keep awake (the Screen Wake Lock API)
+/*
+ * Holds a screen wake lock so the device doesn't sleep. "Only while the agent works" holds it
+ * while a turn is running and lets it go once the session is idle. Browsers drop the lock when
+ * the tab is hidden; it is taken again as soon as the tab is visible.
+ */
+const QUIET_LIMIT = 30 * 60 * 1000; // a "working" session with no news for this long has stopped
+S.wake = {
+  on: localStorage.getItem('lucidly.wake') === '1',
+  onlyWorking: localStorage.getItem('lucidly.wakeWorking') !== '0',
+  lock: null,
+  pending: false,
+  err: '',
+};
+const wakeSupported = () => 'wakeLock' in navigator;
+const agentWorking = () => !!S.run && S.run.status === 'working' && !!S.run.updatedAt && Date.now() - Date.parse(S.run.updatedAt) < QUIET_LIMIT;
+const wakeWanted = () => S.wake.on && wakeSupported() && document.visibilityState === 'visible' && (!S.wake.onlyWorking || agentWorking());
+
+async function syncWake() {
+  const w = S.wake;
+  if (wakeWanted() && !w.lock && !w.pending) {
+    w.pending = true;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      lock.addEventListener('release', () => {
+        // Released by the browser (tab hidden, battery saver...): take it again when we can.
+        if (w.lock !== lock) return;
+        w.lock = null;
+        renderWake();
+      });
+      w.lock = lock;
+      w.err = '';
+    } catch (e) {
+      w.err = e?.message || 'The browser refused';
+    }
+    w.pending = false;
+    if (!wakeWanted()) return syncWake(); // things changed while we waited
+  } else if (!wakeWanted() && w.lock) {
+    const lock = w.lock;
+    w.lock = null;
+    lock.release().catch(() => {});
+  }
+  renderWake();
+}
+document.addEventListener('visibilitychange', () => void syncWake());
+setInterval(() => void syncWake(), 20000); // a working session that falls quiet lets go in time
+
+function wakeState() {
+  const w = S.wake;
+  if (!w.on) return ['off', 'Off: the device sleeps as usual'];
+  if (!wakeSupported()) return ['err', "This browser can't keep the device awake"];
+  if (w.err) return ['err', `Couldn't keep the device awake: ${w.err}`];
+  if (w.lock) return ['awake', w.onlyWorking ? 'Awake while the agent works' : 'Keeping the device awake'];
+  if (document.visibilityState !== 'visible') return ['wait', 'Paused while this tab is hidden'];
+  if (w.onlyWorking && !agentWorking()) return ['wait', 'The agent is idle: the device may sleep. Awake again as soon as it works'];
+  return ['wait', 'Starting…'];
+}
+
+function renderWake() {
+  const [st, text] = wakeState();
+  const btn = $('#wakeBtn');
+  btn.dataset.wake = st;
+  const label = st === 'off' ? 'Keep this device awake' : `Keep awake: ${text.toLowerCase()}`;
+  if (btn.title !== label) {
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  }
+  const pop = $('#wakePop');
+  if (pop.hidden) return;
+  const w = S.wake;
+  setHTML(
+    pop,
+    `<div class="pop-h">Keep awake</div>
+    <label class="switch wk-row"><input type="checkbox" data-wake="on"${w.on ? ' checked' : ''} /><span></span>Keep this device from sleeping</label>
+    ${w.on ? `<label class="wk-opt"><input type="checkbox" data-wake="working"${w.onlyWorking ? ' checked' : ''} /><span><b>Only while the agent is working</b><small>Once the work is done and the session is idle, the device can sleep again.</small></span></label>` : ''}
+    <div class="wk-st st-${st}"><i></i>${esc(text)}</div>
+    <p class="wk-note">Works while this tab is visible: a hidden or minimised tab lets the device sleep.</p>`,
+  );
+}
+
+function toggleWake(show = $('#wakePop').hidden) {
+  $('#wakePop').hidden = !show;
+  $('#wakeBtn').classList.toggle('on', show);
+  renderWake();
+}
+
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement) || !t.dataset.wake) return;
+  if (t.dataset.wake === 'on') {
+    S.wake.on = t.checked;
+    S.wake.err = '';
+    localStorage.setItem('lucidly.wake', t.checked ? '1' : '0');
+  } else {
+    S.wake.onlyWorking = t.checked;
+    localStorage.setItem('lucidly.wakeWorking', t.checked ? '1' : '0');
+  }
+  void syncWake();
+});
+
 function toggleTokens(show = $('#tokensPop').hidden) {
   $('#tokensPop').hidden = !show;
   $('#tokens').classList.toggle('on', show);
@@ -2370,6 +2471,9 @@ document.addEventListener('click', (e) => {
   }
   if (on('#tokens')) return toggleTokens();
   if (!on('#tokensPop') && !$('#tokensPop').hidden) toggleTokens(false);
+  if (on('#wakeBtn')) return toggleWake();
+  if (!on('#wakePop') && !$('#wakePop').hidden) toggleWake(false);
+  if (on('#wakePop')) return;
   if (on('#emptyOpen')) return void openPicker();
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
   if (on('[data-pin]')) return togglePin();
@@ -2756,6 +2860,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'p' && S.run) togglePin();
   else if (e.key === 't' && S.run?.usage) toggleTokens();
   else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
+  else if (e.key === 'Escape' && !$('#wakePop').hidden) toggleWake(false);
   else if (e.key === 'Escape' && !$('#picker').open) {
     S.follow = false;
     S.selected = null;
