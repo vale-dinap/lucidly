@@ -34,6 +34,8 @@ const S = {
   queued: false,
   lastFollowTarget: null,
   view: 'path', // 'path' | 'actions'
+  // The path view's layout: 'simple' (tasks as nodes) or 'detailed' (cards with every step).
+  layout: localStorage.getItem('lucidly.layout') === 'detailed' ? 'detailed' : 'simple',
   // path view
   openGoals: new Set(),
   closedGoals: new Set(),
@@ -251,7 +253,7 @@ const goalOf = (id) => ancestors(id).pop();
 function pathQuery() {
   return S.pf.q.trim().toLowerCase();
 }
-const filtering = () => S.pf.mode !== 'all' || !!pathQuery();
+const filtering = () => (S.layout !== 'simple' && S.pf.mode !== 'all') || !!pathQuery();
 
 function stepText(s) {
   return [
@@ -1029,6 +1031,267 @@ function taskHtml(g, q) {
     </div></section>`;
 }
 
+// ───────────────────────────── simple view: tasks on a spine, each task's steps as a chain of nodes
+/*
+ * Built with keyed DOM updates rather than HTML strings: a node keeps its element for its whole
+ * life, so it pops in once, changes colour smoothly when its status changes, and a chain keeps
+ * its scroll position while the agent works.
+ */
+const GLYPH = {
+  edit: PATHS.edit,
+  command: PATHS.command,
+  read: PATHS.read,
+  agent: PATHS.agent,
+  ask: PATHS.ask,
+  start: PATHS.user,
+  end: 'M6 21V4h11l-2.5 3.5L17 11H6',
+  check: 'M5 12.5l4.5 4.5L19 7',
+  pause: 'M9 6v12 M15 6v12',
+  todo: '',
+};
+// One silhouette per kind of work, so the chain reads even without colour.
+const SHAPE = {
+  edit: '<path class="sh" d="M5 31V12.5L11 6h14l6 6.5V31z"/>',
+  command: '<rect class="sh" x="3.5" y="8" width="29" height="20" rx="6"/>',
+  read: '<circle class="sh" cx="18" cy="18" r="13"/>',
+  agent: '<path class="sh" d="M18 4.5l12 7v13l-12 7-12-7v-13z"/>',
+  ask: '<path class="sh" d="M6 7h24a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H15l-6 5v-5H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/>',
+  todo: '<circle class="sh" cx="18" cy="18" r="11"/>',
+  start: '<circle class="sh" cx="18" cy="18" r="13"/>',
+  end: '<path class="sh" d="M18 4l14 14-14 14L4 18z"/>',
+};
+const KIND_LABEL = { edit: 'file edits', command: 'commands', read: 'reading and searching', agent: 'a subagent', ask: 'a question', todo: 'not started' };
+const glyphSvg = (k) => (GLYPH[k] ? `<svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path d="${GLYPH[k]}"/></svg>` : '');
+
+/** What a step mostly did: it sets the node's shape (and colour, once done). */
+function stepKind(s) {
+  const acts = descendants(s, isAct);
+  if (!acts.length) return s.status === 'pending' || s.status === 'active' ? 'todo' : 'read';
+  if (descendants(s, (c) => c.type === 'subtask' && c.origin === 'subagent').length) return 'agent';
+  if (acts.some((a) => a.kind === 'edit' || a.kind === 'write')) return 'edit';
+  if (acts.some((a) => a.kind === 'command')) return 'command';
+  if (acts.some((a) => a.kind === 'ask')) return 'ask';
+  return 'read';
+}
+
+const liveNow = () => S.run.status === 'working' && !isStale();
+
+function stepState(s) {
+  if (hasOpenIssue(s)) return 'bad';
+  if (s.status === 'active') return liveNow() && s.id === S.run.currentStep ? 'live' : 'idle';
+  if (s.status === 'done') return 'done';
+  if (s.status === 'failed') return 'bad';
+  return 'pend';
+}
+
+function flowOpen(g, q, hit) {
+  if (S.openGoals.has(g.id)) return true;
+  if (S.closedGoals.has(g.id)) return false;
+  if (S.expandAll) return true;
+  if (q) return hit;
+  return g.id === S.run.currentGoal || S.run.goals.length === 1;
+}
+
+/** One chain node: its incoming connector, the shape, and a short label. */
+function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
+  // Start and end both stand for the task: only the one you clicked shows as selected.
+  const sel = S.selected === id && (key.startsWith('s:') || key.startsWith('w:') || (S.flowPick ?? 'start') === key) ? ' sel' : '';
+  return {
+    key,
+    st,
+    cls: `fn k-${kind} st-${st}${sel}${extra}`,
+    html: `<i class="fl"></i><button type="button" class="fn-s" data-fnode="${id}" data-node="${key.startsWith('s:') ? id : ''}" title="${esc(tip)}" aria-label="${esc(tip)}"><svg class="shp" viewBox="0 0 36 36" aria-hidden="true">${SHAPE[kind]}</svg>${glyphSvg(kind)}${badge}</button><span class="fn-l">${esc(label)}</span>`,
+  };
+}
+
+function chainItems(g, q) {
+  const steps = kids(g).filter((c) => c.type === 'step');
+  const items = [
+    flowNode({ key: 'start', id: g.id, kind: 'start', st: 'start', label: 'Request', tip: `You asked (${clock(g.startedAt)}): ${clip(g.title, 300)}`, extra: ' start' }),
+  ];
+  // A task with no steps but some work of its own: one node stands for that work.
+  if (!steps.length && (g.stats?.actions ?? 0) > 0) {
+    const kind = stepKind(g);
+    const st = unresolvedOf(g) ? 'bad' : g.status === 'active' ? (liveNow() ? 'live' : 'idle') : 'done';
+    items.push(flowNode({ key: `w:${g.id}`, id: g.id, kind, st, label: plural(g.stats.actions, 'action'), tip: `${plural(g.stats.actions, 'action')}, mostly ${KIND_LABEL[kind]}` }));
+  }
+  steps.forEach((s, i) => {
+    const kind = stepKind(s);
+    const st = stepState(s);
+    const a = s.stats?.actions ?? 0;
+    const rec = st !== 'bad' && hasRecovered(s);
+    const dim = q && !stepMatches(s, q) ? ' dim' : '';
+    const tip = [
+      `${i + 1}. ${s.title}`,
+      [a ? plural(a, 'action') : 'no actions yet', kind !== 'todo' ? `mostly ${KIND_LABEL[kind]}` : '', s.startedAt ? dur(s.startedAt, liveEnd(s)) : ''].filter(Boolean).join(' · '),
+      st === 'bad' ? 'Failed: nothing has worked after it yet' : rec ? 'Failed along the way, then recovered' : s.untracked ? "Done with the others: its work wasn't told apart" : '',
+    ].filter(Boolean).join('\n');
+    const badge = (st === 'bad' ? '<span class="fn-b bad">!</span>' : rec ? '<span class="fn-b rec"></span>' : '') + (a > 1 ? `<span class="fn-n">${a > 99 ? '99+' : a}</span>` : '');
+    items.push({ ...flowNode({ key: `s:${s.id}`, id: s.id, kind, st, label: s.title, tip, badge, extra: (s.untracked ? ' untr' : '') + dim }), i });
+  });
+  const reached = !!g.outcome || g.status === 'done';
+  const st = reached ? 'done' : g.status === 'waiting' ? 'wait' : 'pend';
+  const label = reached ? 'Done' : g.status === 'waiting' ? 'Interrupted' : 'Goal';
+  const tip = g.outcome ? `Result: ${clip(g.outcome, 400)}` : `Goal: ${clip(goalAim(g), 300)}`;
+  items.push(flowNode({ key: 'end', id: g.id, kind: 'end', st, label, tip, extra: ' end' }));
+  items.forEach((it, i) => (it.i = i));
+  return items;
+}
+
+/** Keyed update of a list of elements: reuse, reorder, add (with an entrance) and remove. */
+function reconcile(parent, items, animate) {
+  const old = new Map();
+  for (const el of parent.children) old.set(el.dataset.key, el);
+  let prev = null;
+  for (const it of items) {
+    let el = old.get(it.key);
+    const fresh = !el;
+    if (fresh) {
+      el = document.createElement('div');
+      el.dataset.key = it.key;
+    } else old.delete(it.key);
+    const turnedDone = !fresh && el.__st && el.__st !== it.st && it.st === 'done';
+    if (el.__cls !== it.cls) {
+      el.className = it.cls;
+      el.__cls = it.cls;
+    }
+    el.__st = it.st;
+    if (el.__html !== it.html) {
+      el.innerHTML = it.html;
+      el.__html = it.html;
+    }
+    if (it.i !== undefined) el.style.setProperty('--i', String(Math.min(it.i, 24)));
+    if ((fresh && animate) || turnedDone) {
+      const c = fresh ? 'enter' : 'just-done';
+      el.classList.add(c);
+      setTimeout(() => el.classList.remove(c), 900);
+    }
+    const next = prev ? prev.nextSibling : parent.firstChild;
+    if (next !== el) parent.insertBefore(el, next);
+    prev = el;
+  }
+  for (const el of old.values()) el.remove();
+}
+
+/** Keeps the working node of a live chain in view, unless you scrolled the chain yourself. */
+function followChain(chain, instant) {
+  const t = chain.querySelector('.fn.st-live, .fn.st-idle') ?? [...chain.querySelectorAll('.fn.st-done, .fn.st-bad')].pop();
+  if (!t || chain.__user) return;
+  const right = t.offsetLeft + t.offsetWidth + 110; // the live node, plus a peek at what comes next
+  const left = t.offsetLeft - 120; // never under the pinned start node
+  let x = chain.scrollLeft;
+  if (right > x + chain.clientWidth) x = right - chain.clientWidth;
+  if (left < x) x = Math.max(0, left);
+  if (Math.abs(x - chain.scrollLeft) < 2) return;
+  chain.__autoAt = Date.now();
+  chain.scrollTo({ left: x, behavior: instant ? 'auto' : 'smooth' });
+}
+
+function chainEdges(chain) {
+  const more = chain.scrollLeft + chain.clientWidth < chain.scrollWidth - 2;
+  chain.parentElement.classList.toggle('more-r', more);
+}
+
+function flowGoalHead(g, qa) {
+  const steps = kids(g).filter((c) => c.type === 'step');
+  const done = steps.filter((s) => s.status === 'done').length;
+  const live = g.id === S.run.currentGoal && g.status === 'active' && liveNow();
+  const st = qa ? 'qa' : live ? 'live' : g.status === 'active' ? 'idle' : g.status === 'waiting' ? 'wait' : 'done';
+  const glyph = qa ? glyphSvg('ask') : st === 'done' ? glyphSvg('check') : st === 'wait' ? glyphSvg('pause') : '';
+  const un = unresolvedOf(g);
+  const meta = qa
+    ? `<span class="fg-ans">${esc(clip(g.outcome ?? '', 200))}</span>`
+    : [
+        steps.length ? `<span>${done}/${steps.length} steps</span>` : g.stats?.actions ? `<span>${plural(g.stats.actions, 'action')}</span>` : '',
+        un ? `<span class="bad">${un} failed</span>` : '',
+        g.startedAt ? `<span>${esc(dur(g.startedAt, liveEnd(g)))}</span>` : '',
+        st === 'wait' ? '<span>interrupted</span>' : '',
+        `<span>${esc(ago(g.startedAt))}</span>`,
+      ].filter(Boolean).join('<i>·</i>');
+  return {
+    st,
+    html: `<span class="fg-n st-${st}">${glyph}${un ? '<span class="fn-b bad">!</span>' : ''}</span>
+      <span class="fg-t"><span class="fg-title">${hl(g.title)}</span><span class="fg-meta">${meta}</span></span>
+      ${qa ? '' : CHEV}`,
+  };
+}
+
+function renderFlow(view, goals, q) {
+  if (!view.__flow) {
+    view.innerHTML = '<div class="flow"></div>';
+    view.__html = null;
+    view.__flow = true;
+    S.flowReady = false;
+  }
+  const root = view.firstChild;
+  if (!goals.length) {
+    root.innerHTML = '<div class="no-match">The run is open. Progress appears as soon as the agent does something.</div>';
+    return;
+  }
+  root.querySelector(':scope > .no-match')?.remove();
+  const animate = !!S.flowReady;
+  const old = new Map();
+  for (const el of root.children) old.set(el.dataset.key, el);
+  let prev = null;
+  for (const g of goals) {
+    const qa = isQA(g);
+    const hit = !q || g.title.toLowerCase().includes(q) || (g.intent ?? '').toLowerCase().includes(q) || kids(g).some((s) => s.type === 'step' && stepMatches(s, q));
+    const open = !qa && flowOpen(g, q, hit);
+    let row = old.get(g.id);
+    const fresh = !row;
+    if (fresh) {
+      row = document.createElement('section');
+      row.dataset.key = g.id;
+      row.innerHTML = `<div class="fg-h" data-ftoggle="${g.id}" data-node="${g.id}"></div><div class="fg-b"><div class="fg-bi"><div class="chain"><div class="chain-in"></div></div></div></div>`;
+      const chain = row.querySelector('.chain');
+      chain.addEventListener(
+        'scroll',
+        () => {
+          // Your own scroll pauses the auto-follow; scrolling back to the end resumes it.
+          if (Date.now() - (chain.__autoAt ?? 0) > 700) chain.__user = chain.scrollLeft + chain.clientWidth < chain.scrollWidth - 30;
+          chainEdges(chain);
+        },
+        { passive: true },
+      );
+      if (animate) {
+        row.classList.add('enter');
+        setTimeout(() => row.classList.remove('enter'), 900);
+      }
+    } else old.delete(g.id);
+    const head = flowGoalHead(g, qa);
+    const cur = g.id === S.run.currentGoal;
+    const cls = `fg${open ? ' open' : ''}${qa ? ' qa' : ''}${cur ? ' cur' : ''} st-${head.st}${S.selected === g.id ? ' sel' : ''}${hit ? '' : ' dim'}`;
+    const wasOpen = row.classList.contains('open');
+    if (row.__cls !== cls) {
+      row.className = cls;
+      row.__cls = cls;
+    }
+    if (open && (fresh ? animate : !wasOpen)) {
+      row.classList.add('opening');
+      setTimeout(() => row.classList.remove('opening'), 900);
+    }
+    const h = row.firstChild;
+    if (h.__html !== head.html) {
+      h.innerHTML = head.html;
+      h.__html = head.html;
+    }
+    const chain = row.querySelector('.chain');
+    // A chain is built the first time it opens and kept (for the closing animation) afterwards.
+    if (open) {
+      const track = chain.firstChild;
+      const first = !track.firstChild;
+      reconcile(track, chainItems(g, q), animate && !first);
+      if (cur) followChain(chain, first || !animate);
+      requestAnimationFrame(() => chainEdges(chain));
+    }
+    const next = prev ? prev.nextSibling : root.firstChild;
+    if (next !== row) root.insertBefore(row, next);
+    prev = row;
+  }
+  for (const el of old.values()) el.remove();
+  S.flowReady = true;
+}
+
 function renderPath() {
   const q = pathQuery();
   const goals = S.run.goals.map(N).filter(Boolean);
@@ -1053,6 +1316,21 @@ function renderPath() {
     .filter(([m, , n]) => m === 'all' || n || S.pf.mode === m)
     .map(([m, label, n, cls]) => `<button class="chip-f${S.pf.mode === m ? ' on' : ''} ${n ? cls : ''}" data-mode="${m}">${label}${n !== null ? ` <span class="n">${n}</span>` : ''}</button>`)
     .join('');
+  const simple = S.layout === 'simple';
+  $('#pathModes').hidden = simple;
+  $('#hideChat').closest('.switch').hidden = simple;
+  if (simple) {
+    $('#expandAll').textContent = S.expandAll ? 'Collapse all' : 'Expand all';
+    $('#pathSearch').placeholder = 'Search steps, files, commands';
+    const view = $('#pathView');
+    view.classList.remove('working');
+    renderFlow(view, goals, q);
+    return;
+  }
+  if ($('#pathView').__flow) {
+    $('#pathView').__flow = false;
+    $('#pathView').__html = null;
+  }
   $('#hideChat').checked = S.pf.hideChat;
   // Always in place (a toolbar that reshuffles is hard to use); greyed out when it has nothing to do.
   const sw = $('#hideChat').closest('.switch');
@@ -1157,7 +1435,8 @@ function renderHeader() {
     save.setAttribute('aria-disabled', 'true');
   }
   renderTokens();
-  for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === S.view);
+  const shown = S.view === 'actions' ? 'actions' : S.layout;
+  for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === shown);
 }
 
 // ───────────────────────────── detail panel
@@ -1790,6 +2069,11 @@ function renderActions() {
 }
 
 function setView(v) {
+  if (v === 'simple' || v === 'detailed') {
+    S.layout = v;
+    localStorage.setItem('lucidly.layout', v);
+    v = 'path';
+  }
   if (v !== 'path' && v !== 'actions') return;
   S.view = v;
   if (S.follow) S.lastFollowTarget = null;
@@ -2225,6 +2509,19 @@ document.addEventListener('click', (e) => {
     S.pickerScope = el.dataset.scope;
     return void openPicker();
   }
+  if ((el = on('[data-fnode]'))) {
+    const key = el.closest('.fn')?.dataset.key ?? '';
+    S.flowPick = key === 'start' || key === 'end' ? key : null;
+    return select(el.dataset.fnode);
+  }
+  if ((el = on('[data-ftoggle]'))) {
+    const g = N(el.dataset.ftoggle);
+    if (!g) return;
+    if (isQA(g)) return select(g.id); // nothing to unfold: its answer is in the panel
+    const open = el.closest('.fg').classList.contains('open');
+    toggleIn(open, g.id, S.openGoals, S.closedGoals);
+    return schedule();
+  }
   if ((el = on('[data-step]'))) {
     const s = N(el.dataset.step);
     if (!s) return;
@@ -2400,7 +2697,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'f' || e.key === 'End') jumpToEnd();
-  else if (e.key === 'v') setView(S.view === 'path' ? 'actions' : 'path');
+  else if (e.key === 'v') setView(S.view === 'actions' ? 'simple' : S.layout === 'simple' ? 'detailed' : 'actions');
   else if (e.key === 'e' && S.view === 'path') $('#expandAll').click();
   else if (e.key === '/') {
     e.preventDefault();

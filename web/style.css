@@ -690,3 +690,98 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .save-btn svg { fill: none; }
 .flag.untr { color: var(--faint); background: transparent; border: 1px dashed var(--border-strong); }
 .step-h.untracked .mk { opacity: 0.55; }
+
+/* ───────── simple view: tasks on a spine, steps as a chain of nodes */
+.flow { padding-top: 4px; }
+.fg { position: relative; }
+.fg::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: var(--border-strong); }
+.fg:first-child::before { top: 22px; }
+.fg:last-child::before { bottom: auto; height: 22px; }
+.fg:only-child::before { display: none; }
+.fg-h { display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 6px 8px 6px 0; cursor: pointer; user-select: none; }
+.fg-n { position: relative; z-index: 1; flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--border-strong); color: var(--muted); transition: background 0.45s, border-color 0.45s, color 0.45s; }
+.fg-n .gl { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.fg-n.st-done { border-color: var(--done); background: var(--done-bg); color: var(--done); }
+.fg-n.st-live, .fg-n.st-idle { border-color: var(--accent-bg); background: var(--accent-bg); color: var(--accent); }
+.fg-n.st-idle { border-color: var(--accent); }
+.fg-n.st-live::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); }
+.fg-n.st-live::after { animation: spin 1.1s linear infinite; }
+.fg-n.st-live { animation: fg-beat 2s ease-out infinite; }
+@keyframes fg-beat { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); } 70%, 100% { box-shadow: 0 0 0 9px transparent; } }
+.fg-n.st-wait { background: var(--sunken); }
+.fg-n.st-qa { width: 22px; height: 22px; margin: 0 5px; border-width: 1.5px; }
+.fg-n.st-qa .gl { width: 12px; height: 12px; stroke-width: 2.2; }
+.fg-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fg-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.2s; }
+.fg-h:hover .fg-title { color: var(--accent); }
+.fg.qa .fg-title { font-size: 13px; font-weight: 500; }
+.fg-meta { display: flex; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.fg-meta i { font-style: normal; color: var(--faint); }
+.fg-meta .bad { color: var(--bad); }
+.fg-ans { overflow: hidden; text-overflow: ellipsis; }
+.fg-h .chev { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--faint); stroke-width: 2; transition: transform 0.3s; }
+.fg.open .fg-h .chev { transform: rotate(90deg); }
+.fg.dim { opacity: 0.38; }
+.fg-b { display: grid; grid-template-rows: 0fr; margin-left: 46px; transition: grid-template-rows 0.38s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.fg.open .fg-b { grid-template-rows: 1fr; }
+.fg-bi { position: relative; min-height: 0; overflow: hidden; }
+.chain-in { display: flex; width: max-content; min-width: 100%; }
+.chain { position: relative; overflow-x: auto; overflow-y: hidden; padding: 14px 6px 12px; margin: 2px 0 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; scroll-padding-left: 104px; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; opacity: 0; transition: opacity 0.2s; }
+.fg.open .chain { opacity: 1; transition: opacity 0.3s 0.05s; }
+.fg-bi.more-r::after { content: ''; position: absolute; right: 1px; top: 3px; bottom: 15px; width: 56px; border-radius: 0 14px 14px 0; background: linear-gradient(to right, transparent, var(--surface)); pointer-events: none; }
+
+.fn { position: relative; flex: none; width: 96px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fn.start { position: sticky; left: 0; z-index: 2; background: linear-gradient(to right, var(--surface) 80%, transparent); box-shadow: -8px 0 0 var(--surface); }
+.fn-s { position: relative; width: 36px; height: 36px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; transition: transform 0.18s; }
+.fn-s:hover { transform: translateY(-1px) scale(1.07); }
+.fn .shp { position: absolute; inset: 0; width: 36px; height: 36px; overflow: visible; }
+.fn .sh { fill: var(--fill, var(--surface)); stroke: var(--stroke, var(--border-strong)); stroke-width: 1.8; stroke-linejoin: round; transition: fill 0.45s, stroke 0.45s; }
+.fn .gl { position: relative; width: 15px; height: 15px; fill: none; stroke: var(--ink, var(--faint)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.45s; }
+.fn.k-edit { --c: var(--edit); }
+.fn.k-command { --c: var(--done); }
+.fn.k-read { --c: var(--other); }
+.fn.k-agent { --c: var(--agent); }
+.fn.k-ask, .fn.k-start { --c: var(--muted); }
+.fn.k-end { --c: var(--done); }
+.fn.k-todo { --c: var(--faint); }
+.fn.st-done { --fill: color-mix(in srgb, var(--c) 16%, var(--surface)); --stroke: var(--c); --ink: var(--c); }
+.fn.st-done.untr { --fill: color-mix(in srgb, var(--c) 7%, var(--surface)); }
+.fn.st-live, .fn.st-idle { --fill: var(--accent-bg); --stroke: var(--accent); --ink: var(--accent); }
+.fn.st-bad { --fill: var(--bad-bg); --stroke: var(--bad); --ink: var(--bad); }
+.fn.st-pend { --fill: var(--surface); --stroke: var(--border-strong); --ink: var(--faint); }
+.fn.st-pend .sh { stroke-dasharray: 3.2 3; }
+.fn.st-start { --fill: var(--sunken); --stroke: var(--border-strong); --ink: var(--muted); }
+.fn.st-wait { --fill: var(--sunken); --stroke: var(--faint); --ink: var(--muted); }
+.fn.st-live .fn-s::before { content: ''; position: absolute; inset: 3px; border-radius: 50%; animation: fn-halo 1.8s ease-out infinite; }
+@keyframes fn-halo { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 75%, 100% { box-shadow: 0 0 0 12px transparent; } }
+.fn.sel .fn-s::after { content: ''; position: absolute; inset: -6px; border-radius: 12px; border: 2px solid var(--accent); }
+.fn-l { width: 88px; font-size: 11.5px; line-height: 1.3; color: var(--muted); text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; transition: color 0.3s; }
+.fn.st-live .fn-l, .fn.st-idle .fn-l, .fn.sel .fn-l { color: var(--text); }
+.fn.st-pend .fn-l { color: var(--faint); }
+.fn.dim { opacity: 0.32; }
+.fn-n { position: absolute; right: -10px; bottom: -6px; min-width: 16px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--muted); font-size: 9.5px; font-weight: 600; line-height: 13px; text-align: center; }
+.fn-b { position: absolute; top: -4px; right: -5px; width: 14px; height: 14px; border-radius: 50%; color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; }
+.fn-b.bad { background: var(--bad); }
+.fn-b.rec { top: -2px; right: -2px; width: 9px; height: 9px; background: color-mix(in srgb, var(--bad) 45%, var(--surface)); border: 1.5px solid var(--surface); }
+/* connector from the previous node: solid where the work went, dashed ahead, marching into the live node */
+.fl { position: absolute; top: 17px; left: -26px; width: 52px; height: 2px; border-radius: 1px; background: var(--border-strong); transform-origin: left center; }
+.fn.start .fl { display: none; }
+.fn.st-pend .fl, .fn.st-wait .fl { background: repeating-linear-gradient(to right, var(--border-strong) 0 4px, transparent 4px 8px); }
+.fn.st-live .fl { background: repeating-linear-gradient(to right, var(--accent) 0 5px, transparent 5px 10px); background-size: 10px 2px; animation: fl-march 0.7s linear infinite; }
+@keyframes fl-march { to { background-position: 10px 0; } }
+/* entrances and changes */
+.fn.enter .fn-s { animation: fn-pop 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.fn.enter .fl { animation: fl-draw 0.32s ease-out both; }
+.fn.enter .fn-l { animation: fn-fade 0.35s 0.14s ease-out both; }
+@keyframes fn-pop { from { opacity: 0; transform: scale(0.3); } }
+@keyframes fl-draw { from { transform: scaleX(0); } }
+@keyframes fn-fade { from { opacity: 0; transform: translateY(3px); } }
+.fn.just-done .fn-s { animation: fn-done 0.55s ease-out; }
+.fn.just-done .fn-s::before { content: ''; position: absolute; inset: 3px; border-radius: 50%; animation: fn-flash 0.7s ease-out; }
+@keyframes fn-done { 30% { transform: scale(1.18); } }
+@keyframes fn-flash { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent); } to { box-shadow: 0 0 0 14px transparent; } }
+.fg.opening .fn { animation: fn-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 30ms); }
+@keyframes fn-in { from { opacity: 0; transform: translateX(-12px); } }
+.fg.enter { animation: fg-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.fg.enter .fg-n { animation: fn-pop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+@keyframes fg-in { from { opacity: 0; transform: translateY(10px); } }
