@@ -27,11 +27,6 @@
         <button class="meter" id="tokens" hidden title="Token usage (T)" aria-haspopup="dialog"></button>
         <div class="pop" id="tokensPop" hidden></div>
       </div>
-      <nav class="seg" aria-label="View">
-        <button type="button" data-view="simple" class="on" title="Tasks and their steps as nodes: the essentials (V)">Simple</button>
-        <button type="button" data-view="detailed" title="Every step, with its details (V)">Detailed</button>
-        <button type="button" data-view="actions" title="Every action in order, for debugging (V)">Actions</button>
-      </nav>
     </header>
 
     <main class="main">
@@ -39,6 +34,11 @@
         <div id="overview"></div>
 
         <div class="toolbar" id="tbPath">
+          <nav class="seg vseg" aria-label="View">
+            <button type="button" data-view="simple" class="on" title="Tasks and their steps as nodes: the essentials (V)">Simple</button>
+            <button type="button" data-view="detailed" title="Every step, with its details (V)">Detailed</button>
+            <button type="button" data-view="actions" title="Every action in order, for debugging (V)">Actions</button>
+          </nav>
           <div class="chips" id="pathModes"></div>
           <label class="switch"><input type="checkbox" id="hideChat" /><span></span>Hide Q&amp;A</label>
           <div class="grow"></div>
@@ -46,10 +46,15 @@
             <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4" /></svg>
             <input type="search" id="pathSearch" placeholder="Search steps, files, commands" autocomplete="off" />
           </div>
-          <button class="tbtn" id="expandAll" title="Expand or collapse all steps">Expand all</button>
+          <button class="ibtn tb-icon" id="expandAll" title="Expand all (E)" aria-label="Expand all (E)"><svg viewBox="0 0 24 24"><path d="M8 8l4-4 4 4 M8 16l4 4 4-4" /></svg></button>
         </div>
 
         <div class="toolbar" id="tbActions" hidden>
+          <nav class="seg vseg" aria-label="View">
+            <button type="button" data-view="simple" title="Tasks and their steps as nodes: the essentials (V)">Simple</button>
+            <button type="button" data-view="detailed" title="Every step, with its details (V)">Detailed</button>
+            <button type="button" data-view="actions" class="on" title="Every action in order, for debugging (V)">Actions</button>
+          </nav>
           <div class="chips" id="kindFilters"></div>
           <div class="grow"></div>
           <nav class="seg err-seg" id="errFilter" aria-label="Failures"></nav>

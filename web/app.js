@@ -36,6 +36,8 @@ const S = {
   view: 'path', // 'path' | 'actions'
   // The path view's layout: 'simple' (tasks as nodes) or 'detailed' (cards with every step).
   layout: localStorage.getItem('lucidly.layout') === 'detailed' ? 'detailed' : 'simple',
+  // Keep the overview (stats and timeline) on screen while scrolling.
+  pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // path view
   openGoals: new Set(),
   closedGoals: new Set(),
@@ -321,6 +323,7 @@ function renderOverview() {
       ${tokStat()}
       ${span}
     </div>
+    <button type="button" class="ibtn pin${S.pinOv ? ' on' : ''}" data-pin title="${S.pinOv ? 'Unpin the timeline: let it scroll away (P)' : 'Pin the timeline: keep it on screen while scrolling (P)'}" aria-pressed="${S.pinOv}">${SVG('M9 4h6l-1 5 3 3v2H7v-2l3-3z M12 14v6')}</button>
     ${rows && rows.length ? stripHtml(rows) : ''}
     ${laneHtml()}
   </div>`);
@@ -770,7 +773,7 @@ function layersHtml(rows, lo, hi, B, total) {
         running ? 'running' : `${clock(g.startedAt)}–${clock(g.endedAt)}`,
       ].join('\n');
       const sel = openAgent()?.id === g.id ? ' sel' : '';
-      return `<button type="button" class="layer-box${running ? ' running' : ''}${un ? ' bad' : ''}${sel}" data-layer="${g.id}" style="left:${left}%;width:${Math.max(0, right - left)}%;top:${row * 17}px" title="${esc(tip)}"><span>${esc(title)}</span></button>`;
+      return `<button type="button" class="layer-box${running ? ' running' : ''}${un ? ' bad' : ''}${row ? ' rx' : ''}${sel}" data-layer="${g.id}" style="left:${left}%;width:${Math.max(0, right - left)}%;top:${row * 17}px" title="${esc(tip)}"><span>${esc(title)}</span></button>`;
     })
     .join('');
   if (!visible.length) return '';
@@ -778,7 +781,12 @@ function layersHtml(rows, lo, hi, B, total) {
   const more = capped
     ? `<span class="layer-more" style="top:${(MAX - 1) * 17}px;left:calc(${Math.min(94, Math.max(...extra.map((it) => xOf(it.e0 + 1))))}% + 4px)" title="${esc(`${extra.length} subagents overlap on this row:\n${extra.map((it) => it.g.title.replace(/^Subagent:\s*/, '')).join('\n')}`)}">+${extra.length}</span>`
     : '';
-  return `<div class="layers" style="height:${rowsN * 17 - 2}px" aria-label="Subagents">${boxes}${more}</div>`;
+  // The compact (pinned, scrolled) card keeps one row: what overlaps it is counted on a "+N".
+  const folded = visible.filter((it) => it.row > 0);
+  const more1 = folded.length
+    ? `<span class="layer-more c1" style="left:calc(${Math.min(94, Math.max(...folded.map((it) => xOf(it.e0 + 1))))}% + 4px)" title="${esc(`${folded.length} more subagents in parallel:\n${folded.map((it) => it.g.title.replace(/^Subagent:\s*/, '')).join('\n')}`)}">+${folded.length}</span>`
+    : '';
+  return `<div class="layers" style="--lh:${rowsN * 17 - 2}px" aria-label="Subagents">${boxes}${more}${more1}</div>`;
 }
 
 // ───────────────────────────── strip zoom (a window over the run, like a video editor's zoom bar)
@@ -1292,6 +1300,16 @@ function renderFlow(view, goals, q) {
   S.flowReady = true;
 }
 
+/** Expand all / collapse all, as a compact icon button: arrows apart to expand, together to collapse. */
+function setExpandBtn(collapse) {
+  const b = $('#expandAll');
+  const label = collapse ? 'Collapse all (E)' : 'Expand all (E)';
+  if (b.title === label) return;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.innerHTML = SVG(collapse ? 'M8 4l4 4 4-4 M8 20l4-4 4 4' : 'M8 8l4-4 4 4 M8 16l4 4 4-4');
+}
+
 function renderPath() {
   const q = pathQuery();
   const goals = S.run.goals.map(N).filter(Boolean);
@@ -1320,7 +1338,7 @@ function renderPath() {
   $('#pathModes').hidden = simple;
   $('#hideChat').closest('.switch').hidden = simple;
   if (simple) {
-    $('#expandAll').textContent = S.expandAll ? 'Collapse all' : 'Expand all';
+    setExpandBtn(S.expandAll);
     $('#pathSearch').placeholder = 'Search steps, files, commands';
     const view = $('#pathView');
     view.classList.remove('working');
@@ -1343,7 +1361,7 @@ function renderPath() {
     : nQA
       ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
       : 'No questions answered without work in this run yet: nothing to hide for now';
-  $('#expandAll').textContent = S.pf.mode === 'files' ? (S.ff.open.size ? 'Collapse all' : 'Expand all') : S.expandAll ? 'Collapse all' : 'Expand all';
+  setExpandBtn(S.pf.mode === 'files' ? S.ff.open.size > 0 : S.expandAll);
   $('#pathSearch').placeholder = S.pf.mode === 'files' ? 'Filter files and edits' : 'Search steps, files, commands';
   if (S.pf.mode === 'files') {
     const view = $('#pathView');
@@ -2165,6 +2183,8 @@ function render() {
   const pane = $('#pane');
   $('#empty').hidden = has;
   $('#overview').hidden = !has;
+  pane.classList.toggle('pin-ov', has && S.pinOv);
+  if (!S.pinOv) $('#overview').classList.remove('compact');
   $('#tbPath').hidden = $('#pathView').hidden = !has || S.view !== 'path';
   $('#tbActions').hidden = $('#actionsView').hidden = !has || S.view !== 'actions';
   if (has) {
@@ -2298,6 +2318,23 @@ function toggleTokens(show = $('#tokensPop').hidden) {
   renderTokens();
 }
 
+function togglePin() {
+  S.pinOv = !S.pinOv;
+  localStorage.setItem('lucidly.pinOverview', S.pinOv ? '1' : '0');
+  schedule();
+}
+
+// The toolbar sits right under a pinned overview: track its height.
+let ovH = 0;
+new ResizeObserver(() => {
+  const ov = $('#overview');
+  const pane = $('#pane');
+  const h = ov.offsetHeight;
+  pane.style.setProperty('--ov-h', `${h}px`);
+  if (ovH && h !== ovH && S.pinOv && ov.classList.contains('compact')) pane.scrollTop += h - ovH;
+  ovH = h;
+}).observe($('#overview'));
+
 function setFollow(on) {
   S.follow = on;
   if (on) S.lastFollowTarget = null;
@@ -2335,6 +2372,7 @@ document.addEventListener('click', (e) => {
   if (!on('#tokensPop') && !$('#tokensPop').hidden) toggleTokens(false);
   if (on('#emptyOpen')) return void openPicker();
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
+  if (on('[data-pin]')) return togglePin();
   if ((el = on('[data-mode]'))) {
     S.pf.mode = el.dataset.mode;
     return schedule();
@@ -2678,6 +2716,18 @@ function jumpToEnd() {
 }
 $('#toEnd').addEventListener('click', jumpToEnd);
 $('#pane').addEventListener('scroll', () => requestAnimationFrame(updateToEnd), { passive: true });
+
+// Pinned and scrolled down, the overview folds to just its timeline; back at the top it unfolds.
+// The content below moves up by what the card loses, so the scroll position takes that back:
+// what you were looking at stays put.
+function updateCompact() {
+  const pane = $('#pane');
+  const ov = $('#overview');
+  const on = ov.classList.contains('compact');
+  const want = S.pinOv && (on ? pane.scrollTop > 4 : pane.scrollTop > Math.max(90, ov.offsetHeight - 70));
+  if (want !== on) ov.classList.toggle('compact', want);
+}
+$('#pane').addEventListener('scroll', () => requestAnimationFrame(updateCompact), { passive: true });
 $('#sessionsBtn').addEventListener('click', () => openPicker());
 $('#runBox').addEventListener('click', () => openPicker());
 $('#loadInput').addEventListener('change', (e) => {
@@ -2703,6 +2753,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     $(S.view === 'path' ? '#pathSearch' : '#actionsSearch').focus();
   } else if (e.key === 'o') openPicker();
+  else if (e.key === 'p' && S.run) togglePin();
   else if (e.key === 't' && S.run?.usage) toggleTokens();
   else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
   else if (e.key === 'Escape' && !$('#picker').open) {
