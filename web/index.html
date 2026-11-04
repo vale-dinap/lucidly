@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lucidly</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand"><img src="favicon.svg" alt="" width="20" height="20" /><span>Lucidly</span></div>
+      <button class="ibtn open-btn" id="sessionsBtn" title="Open session (O)" aria-label="Open session">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8A1.5 1.5 0 0 1 20.5 8v1.5" /><path d="M3.5 9.5h17l-1.6 8.2a1.5 1.5 0 0 1-1.5 1.3H6.6a1.5 1.5 0 0 1-1.5-1.3z" /></svg>
+      </button>
+      <a class="ibtn save-btn" id="saveBtn" title="Save a snapshot of this run to a file, to keep or share it" aria-label="Save snapshot">
+        <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14" /></svg>
+      </a>
+      <div class="run" id="runBox" title="Open another session (O)">
+        <div class="run-title" id="runTitle">No run open</div>
+        <div class="run-sub" id="runSub"></div>
+      </div>
+      <span class="pill" id="status" data-status="idle"><i></i><span id="statusText">Idle</span></span>
+      <div class="grow"></div>
+      <div class="meter-wrap">
+        <span class="pill warn" id="outdated" hidden title="Lucidly's engine was updated after this server started. Stop it and run lucidly again to apply the update: some data (such as token counts) may be missing until then.">Restart Lucidly to update</span>
+        <button class="meter" id="tokens" hidden title="Token usage (T)" aria-haspopup="dialog"></button>
+        <div class="pop" id="tokensPop" hidden></div>
+      </div>
+      <nav class="seg" aria-label="View">
+        <button type="button" data-view="path" class="on" title="Visual path (V)">Path</button>
+        <button type="button" data-view="actions" title="Every action in order (V)">Actions</button>
+      </nav>
+    </header>
+
+    <main class="main">
+      <section class="pane" id="pane">
+        <div id="overview"></div>
+
+        <div class="toolbar" id="tbPath">
+          <div class="chips" id="pathModes"></div>
+          <label class="switch"><input type="checkbox" id="hideChat" /><span></span>Hide Q&amp;A</label>
+          <div class="grow"></div>
+          <div class="search">
+            <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4" /></svg>
+            <input type="search" id="pathSearch" placeholder="Search steps, files, commands" autocomplete="off" />
+          </div>
+          <button class="tbtn" id="expandAll" title="Expand or collapse all steps">Expand all</button>
+        </div>
+
+        <div class="toolbar" id="tbActions" hidden>
+          <div class="chips" id="kindFilters"></div>
+          <div class="grow"></div>
+          <nav class="seg err-seg" id="errFilter" aria-label="Failures"></nav>
+          <select id="actionsGoal" aria-label="Task"></select>
+          <div class="search">
+            <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4" /></svg>
+            <input type="search" id="actionsSearch" placeholder="Filter  ( / )" autocomplete="off" />
+          </div>
+          <button class="tbtn" id="copyCommands" title="Copy the listed shell commands">Copy commands</button>
+        </div>
+
+        <div id="pathView"></div>
+        <div id="actionsView" hidden></div>
+
+        <div class="empty" id="empty">
+          <img src="favicon.svg" alt="" width="44" height="44" />
+          <h2>Nothing to show yet</h2>
+          <p>Open a Claude Code session, or pipe an agent's output into <code>lucidly</code>.</p>
+          <button class="btn primary" id="emptyOpen">Choose a session</button>
+        </div>
+        <div class="fab-wrap"><button type="button" class="fab" id="toEnd" hidden title="Jump to the end and follow the agent (F)" aria-label="Jump to the end">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v13m0 0l-5.5-5.5M12 18l5.5-5.5" /></svg><span class="fab-n" id="toEndN" hidden></span>
+        </button></div>
+      </section>
+      <aside class="detail" id="detail" hidden></aside>
+    </main>
+
+    <dialog id="picker" class="picker">
+      <form method="dialog" class="picker-h">
+        <h3>Open session</h3>
+        <nav class="seg">
+          <button type="button" data-scope="project" class="on">This project</button>
+          <button type="button" data-scope="all">All projects</button>
+        </nav>
+        <button class="ibtn" value="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+      </form>
+      <div id="pickerOpen"></div>
+      <ul id="pickerList" class="plist"></ul>
+      <label class="picker-f" title="A file saved with the download button: keeps a run after its transcript is gone, or lets someone else open it">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9m0 0l-4 4m4-4l4 4M5 4h14" /></svg>
+        Open a saved snapshot…
+        <input type="file" id="loadInput" accept=".json,application/json" hidden />
+      </label>
+    </dialog>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
