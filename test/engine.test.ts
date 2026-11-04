@@ -366,3 +366,14 @@ test('a finished turn marks its task done; a follow-up reopens it; an interrupte
   e.applyAll([b, { type: 'turn.end', interrupted: true }]);
   assert.equal(goal(e).status, 'waiting');
 });
+
+test('after a turn, a short status update is a new task; an approval or an answer continues', () => {
+  const e = new Engine();
+  e.applyAll([prompt('Plan the commits for this repository please'), text('Here is the list. Want me to create them?'), { type: 'turn.end' }, prompt('not yet')]);
+  assert.equal(e.run.goals.length, 1, 'an answer to a question continues the task');
+  e.applyAll([text('Fine, tell me when.'), { type: 'turn.end' }, prompt('go ahead')]);
+  assert.equal(e.run.goals.length, 1, 'an approval continues the task');
+  e.applyAll([text('Done: all nine are in.'), { type: 'turn.end' }, prompt('all committed and pushed.')]);
+  assert.equal(e.run.goals.length, 2, 'a status update is a new task');
+  assert.equal(goal(e, 0).status, 'done');
+});

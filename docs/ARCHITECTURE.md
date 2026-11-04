@@ -70,7 +70,7 @@ Every event carries `ts`, an optional `scope` (subagent nesting) and `raw`, the 
 
 ## 3. Engine: building the picture
 
-**Goals.** A substantive user prompt opens a *goal* (start point → end point). Short replies ("yes", "go on") continue the current goal, and so does any message sent while the agent is still working (an interjection is shown in the current step, not as a new task).
+**Goals.** A substantive user prompt opens a *goal* (start point → end point). Short replies continue the current goal when they answer the agent: an approval or a choice ("yes", "go on", "the second one"), or any short message right after the agent asked a question. Other short messages ("all committed and pushed") and slash commands open a new goal, except housekeeping commands such as /compact or /model. A message sent while the agent is still working also continues the current goal (an interjection is shown in the current step, not as a new task).
 
 **Rule: if the agent has a plan, the plan is the backbone.** Steps are inferred only when there is no plan at all.
 

@@ -87,8 +87,8 @@ test('full pipeline builds the expected picture', () => {
   assert.deepEqual(run.context?.files, ['C:\\demo\\app\\src\\Signup.tsx']);
   assert.deepEqual(run.context?.commands, ['npm test']);
   assert.match(g.outcome!, /all 12 tests pass/);
-  // second prompt is short, a slash command: continues the goal
-  assert.equal(e.run.goals.length, 1);
+  // the second prompt is a slash command asking for something new: its own task
+  assert.equal(e.run.goals.length, 2);
 });
 
 test('cleanPrompt strips harness markup', () => {

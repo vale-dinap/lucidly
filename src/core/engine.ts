@@ -20,6 +20,8 @@ import {
   hasIntent,
   intentTitle,
   isSubstantivePrompt,
+  isReply,
+  endsWithQuestion,
   issueSummary,
   matchStep,
   sentences,
@@ -84,6 +86,8 @@ export class Engine {
   private dirty = new Set<string>();
   private runDirty = false;
   private seq = 0;
+  /** The main agent's last words asked the user something. */
+  private agentAsked = false;
   private goalCtx = new Map<string, GoalCtx>();
   private units = new Map<string, UnitCtx>();
   private calls = new Map<string, CallRef>();
@@ -481,7 +485,9 @@ export class Engine {
     const midTurn = this.run.status === 'working';
     this.run.status = 'working';
     const cur = this.currentGoal();
-    if (!cur || (!midTurn && isSubstantivePrompt(text))) {
+    // After the turn, a short message continues the task only if it answers the agent
+    // ("yes", "go ahead", or anything after a question); "all done, pushed" is a new card.
+    if (!cur || (!midTurn && !isReply(text, this.agentAsked))) {
       if (cur) this.finishGoal(cur, ts);
       const g = this.newGoal(text, ts);
       this.addChunk(g.id, 'prompt', raw ?? text, ts, 'Prompt');
@@ -498,6 +504,7 @@ export class Engine {
 
   private onText(text: string, ts?: string, scope?: string): void {
     if (!text.trim()) return;
+    if (!scope) this.agentAsked = endsWithQuestion(text);
     if (scope) {
       const n = this.scopes.get(scope);
       if (n) {

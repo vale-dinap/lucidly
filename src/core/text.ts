@@ -204,6 +204,28 @@ export function hasDeviationCue(text: string): boolean {
 }
 
 /** Is this user message the start of a new task, or a short reply within the current one? */
+const REPLY = /^(yes|yep|yeah|yup|y|no|nope|ok|okay|k|sure|go|go ahead|go on|do it|do so|proceed|continue|carry on|keep going|please do|please|sounds good|looks good|lgtm|agreed|right|correct|exactly|perfect|great|thanks|thank you|both|neither|either|the (first|second|third|last) one|option \w+|\d+)\b/i;
+
+const HOUSEKEEPING = /^\/(compact|clear|model|config|cost|context|status|help|memory|permissions|login|logout|doctor|resume|fast|effort|theme|usage|statusline)\b/i;
+
+/**
+ * A short message that answers the agent rather than giving it something new: an approval,
+ * a choice, or anything at all when the agent's last words asked a question.
+ */
+export function isReply(text: string, agentAsked: boolean): boolean {
+  const t = text.trim();
+  // Housekeeping commands never start a task; any other slash command is a new request.
+  if (HOUSEKEEPING.test(t)) return true;
+  if (t.startsWith('/')) return false;
+  if (isSubstantivePrompt(t)) return false;
+  return agentAsked || REPLY.test(text.trim());
+}
+
+/** The agent's words end by asking the user something. */
+export function endsWithQuestion(text: string): boolean {
+  return /\?\s*(\*+|_+|\)|")?\s*$/.test(text.trim());
+}
+
 export function isSubstantivePrompt(text: string): boolean {
   const t = text.trim();
   const words = t.split(/\s+/).filter(Boolean).length;
