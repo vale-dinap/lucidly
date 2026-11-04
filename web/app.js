@@ -1463,31 +1463,30 @@ function renderPath() {
     .join('');
   const simple = S.layout === 'simple';
   $('#pathModes').hidden = simple;
-  $('#hideChat').closest('.switch').hidden = simple;
+  // Hide Q&A works in both layouts: always in place (a toolbar that reshuffles is hard to use),
+  // and always usable (a switch that locks itself is more confusing than one with nothing to do).
+  $('#hideChat').checked = S.pf.hideChat;
+  $('#hideChat').disabled = false;
+  const sw = $('#hideChat').closest('.switch');
+  const nQA = goals.filter(isQA).length;
+  sw.classList.remove('off');
+  sw.title = !simple && S.pf.mode === 'files'
+    ? 'Applies to the task list, not to File edits'
+    : nQA
+      ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
+      : 'No questions answered without work in this run yet: nothing to hide for now';
   if (simple) {
     setExpandBtn(S.expandAll);
     $('#pathSearch').placeholder = 'Search steps, files, commands';
     const view = $('#pathView');
     view.classList.remove('working');
-    renderFlow(view, goals, q);
+    renderFlow(view, S.pf.hideChat ? goals.filter((g) => !isQA(g)) : goals, q);
     return;
   }
   if ($('#pathView').__flow) {
     $('#pathView').__flow = false;
     $('#pathView').__html = null;
   }
-  $('#hideChat').checked = S.pf.hideChat;
-  // Always in place (a toolbar that reshuffles is hard to use); greyed out when it has nothing to do.
-  const sw = $('#hideChat').closest('.switch');
-  const nQA = goals.filter(isQA).length;
-  // Always usable: a switch that locks itself is more confusing than one with nothing to do yet.
-  $('#hideChat').disabled = false;
-  sw.classList.remove('off');
-  sw.title = S.pf.mode === 'files'
-    ? 'Applies to the task list, not to File edits'
-    : nQA
-      ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
-      : 'No questions answered without work in this run yet: nothing to hide for now';
   setExpandBtn(S.pf.mode === 'files' ? S.ff.open.size > 0 : S.expandAll);
   $('#pathSearch').placeholder = S.pf.mode === 'files' ? 'Filter files and edits' : 'Search steps, files, commands';
   if (S.pf.mode === 'files') {
