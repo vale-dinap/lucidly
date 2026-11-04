@@ -3090,3 +3090,66 @@ setInterval(() => S.run && renderHeader(), 15000);
 })();
 // The search box widens while in use: re-check whether the filter chips still fit.
 for (const ev of ['focus', 'blur']) $('#pathSearch').addEventListener(ev, () => setTimeout(fitToolbar, 230));
+
+// ───────────────────────────── instant tooltips on the timeline
+/*
+ * The strip's bars and the subagent boxes describe themselves on hover right away, instead of
+ * after the browser's tooltip delay. Their native title is taken over on first hover, so the
+ * browser's own tooltip never doubles it.
+ */
+const tipEl = document.createElement('div');
+tipEl.className = 'tip';
+tipEl.hidden = true;
+document.body.append(tipEl);
+const TIP_TARGET = '#overview .strip > rect, #overview .strip > polygon, #overview .layers > *';
+function tipText(el) {
+  if (el.dataset.tip === undefined) {
+    const t = el.querySelector(':scope > title');
+    el.dataset.tip = t ? t.textContent : (el.getAttribute('title') ?? '');
+    t?.remove();
+    el.removeAttribute('title');
+  }
+  return el.dataset.tip;
+}
+function placeTip(x, y) {
+  const r = tipEl.getBoundingClientRect();
+  const left = Math.max(8, Math.min(innerWidth - r.width - 8, x - r.width / 2));
+  const top = y - r.height - 14 < 8 ? y + 18 : y - r.height - 14;
+  tipEl.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+let tipOn = null;
+document.addEventListener('pointerover', (e) => {
+  const el = e.target instanceof Element ? e.target.closest(TIP_TARGET) : null;
+  if (el === tipOn) return;
+  tipOn = el;
+  const text = el && tipText(el);
+  if (!text) {
+    tipEl.hidden = true;
+    return;
+  }
+  tipEl.textContent = text;
+  tipEl.hidden = false;
+  placeTip(e.clientX, e.clientY);
+});
+document.addEventListener(
+  'pointermove',
+  (e) => {
+    if (!tipOn || tipEl.hidden) return;
+    // A live update may have rebuilt the strip under the pointer: describe what is there now.
+    if (!tipOn.isConnected) {
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest(TIP_TARGET);
+      if (!el) return hideTip();
+      tipOn = el;
+      tipEl.textContent = tipText(el);
+    }
+    placeTip(e.clientX, e.clientY);
+  },
+  { passive: true },
+);
+const hideTip = () => {
+  tipOn = null;
+  tipEl.hidden = true;
+};
+document.addEventListener('pointerleave', hideTip);
+$('#pane').addEventListener('scroll', hideTip, { passive: true });
+document.addEventListener('pointerdown', hideTip);

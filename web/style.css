@@ -908,3 +908,6 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .toolbar .search:not(:focus-within):has(input:placeholder-shown) input { width: 30px; padding-right: 0; cursor: pointer; color: transparent; }
 .toolbar .search:not(:focus-within):has(input:placeholder-shown) input::placeholder { color: transparent; }
 .toolbar .search svg { pointer-events: none; }
+
+/* ───────── instant tooltips (timeline) */
+.tip { position: fixed; left: 0; top: 0; z-index: 60; max-width: 360px; padding: 6px 9px; border-radius: 7px; background: var(--text); color: var(--bg); font-size: 11.5px; line-height: 1.4; white-space: pre-line; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
