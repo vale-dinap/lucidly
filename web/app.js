@@ -2590,6 +2590,8 @@ function togglePin() {
 }
 
 // The toolbar sits right under a pinned overview: track its height.
+// The Files header pins right under the toolbar: track the toolbar's height too.
+new ResizeObserver(() => $('#pane').style.setProperty('--tb-h', `${$('#tbPath').offsetHeight}px`)).observe($('#tbPath'));
 let ovH = 0;
 new ResizeObserver(() => {
   const ov = $('#overview');

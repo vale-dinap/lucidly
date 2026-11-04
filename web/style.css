@@ -616,7 +616,8 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .stat.tokstat:hover b { color: var(--accent); }
 
 /* ───────── file edits view */
-.fsum { display: flex; align-items: center; gap: 10px; padding: 4px 2px 10px; font-size: 13px; color: var(--muted); }
+.fsum { display: flex; align-items: center; gap: 10px; padding: 4px 2px 10px; font-size: 13px; color: var(--muted); position: sticky; top: var(--tb-h, 52px); z-index: 3; background: var(--bg); box-shadow: 0 6px 8px -6px var(--bg); }
+.pane.pin-ov .fsum { top: calc(var(--ov-h, 0px) + var(--tb-h, 52px)); }
 .fsum b { color: var(--text); font-weight: 620; }
 .fsum-l { font-size: 12px; color: var(--faint); }
 .fsort button { font-size: 12px; padding: 3px 10px; }
