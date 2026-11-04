@@ -129,57 +129,184 @@ function hl(text) {
   return s.replace(re, (m) => `<mark>${m}</mark>`);
 }
 
-/** Small, safe markdown subset: fences, headings, lists, paragraphs, `code`, **bold**. */
-function md(src) {
-  const parts = String(src).split('```');
-  return parts
-    .map((part, i) => {
-      if (i % 2 === 1) return `<pre>${esc(part.replace(/^[^\n]*\n/, ''))}</pre>`;
-      const inline = (t) =>
-        esc(t)
-          .replace(/`([^`]+)`/g, '<code>$1</code>')
-          .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-      const out = [];
-      let list = null;
-      let para = [];
-      const flushPara = () => {
-        if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
-        para = [];
-      };
-      const flushList = () => {
-        if (list) out.push(`<${list.tag}>${list.items.map((x) => `<li>${inline(x)}</li>`).join('')}</${list.tag}>`);
-        list = null;
-      };
-      for (const line of part.split('\n')) {
-        const h = /^(#{1,4})\s+(.*)$/.exec(line);
-        const li = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line);
-        if (h) {
-          flushPara();
-          flushList();
-          out.push(`<h4>${inline(h[2])}</h4>`);
-        } else if (li) {
-          flushPara();
-          const tag = li[1] ? 'ul' : 'ol';
-          if (!list || list.tag !== tag) {
-            flushList();
-            list = { tag, items: [] };
-          }
-          list.items.push(li[3]);
-        } else if (!line.trim()) {
-          flushPara();
-          flushList();
-        } else if (list && /^\s{2,}/.test(line)) {
-          list.items[list.items.length - 1] += ' ' + line.trim();
-        } else {
-          flushList();
-          para.push(line);
-        }
-      }
-      flushPara();
-      flushList();
-      return out.join('');
+/**
+ * Safe markdown (GitHub flavour, the parts agents write): fenced code with highlighting,
+ * headings, tables, nested and task lists, quotes, rules, and inline code, links, bold,
+ * italic and strikethrough. Everything is escaped first; only these tags come out.
+ */
+function mdInline(t) {
+  const keep = [];
+  const stash = (html) => `\u0000${keep.push(html) - 1}\u0000`;
+  let s = String(t)
+    // code spans first: nothing inside them is markdown
+    .replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (_, __, c) => stash(`<code>${esc(c.trim() || c)}</code>`))
+    // backslash escapes
+    .replace(/\\([\\`*_{}\[\]()#+\-.!|~>])/g, (_, c) => stash(esc(c)));
+  const url = (u) => (/^(https?:|mailto:)/i.test(u) ? u : null);
+  s = s
+    .replace(/!?\[([^\]]+)\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)/g, (m, text, href) => {
+      const u = url(href);
+      return u ? stash(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${mdInline(text)}</a>`) : m;
     })
-    .join('');
+    .replace(/<(https?:\/\/[^\s>]+)>/g, (_, u) => stash(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`))
+    .replace(/(^|[\s(])(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])/g, (_, pre, u) => pre + stash(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`));
+  s = esc(s)
+    .replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, '<b><i>$1</i></b>')
+    .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '$1<b>$2</b>')
+    .replace(/(^|[^*\w])\*(?=[^\s*])([^*]*?[^\s*])\*(?!\*)/g, '$1<i>$2</i>')
+    .replace(/(^|[^\w])_(?=[^\s_])([^_]*?[^\s_])_(?!\w)/g, '$1<i>$2</i>')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<s>$1</s>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[Number(i)]);
+}
+
+const MD_LANG = { py: 'python', python: 'python', python3: 'python', sh: 'shell', bash: 'shell', shell: 'shell', zsh: 'shell', console: 'shell', shellsession: 'shell', powershell: 'shell', ps1: 'shell', pwsh: 'shell' };
+
+/** Cells of a table row: outer pipes dropped, `\|` kept as a literal pipe. */
+function mdCells(line) {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
+  const out = [];
+  let cur = '';
+  let tick = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '\\' && t[i + 1] === '|') {
+      cur += '\\|';
+      i++;
+    } else if (c === '`') {
+      tick = !tick;
+      cur += c;
+    } else if (c === '|' && !tick) {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += c;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+const MD_TABLE_SEP = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+const MD_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+const MD_FENCE = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/;
+
+function md(src) {
+  const lines = String(src ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let para = [];
+  const flush = () => {
+    if (para.length) out.push(`<p>${para.map((l) => mdInline(l.trim())).join('<br>')}</p>`);
+    para = [];
+  };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fence = MD_FENCE.exec(line);
+    if (fence) {
+      flush();
+      const close = new RegExp(`^\\s*${fence[1][0] === '`' ? '`' : '~'}{${fence[1].length},}\\s*$`);
+      const body = [];
+      i++;
+      while (i < lines.length && !close.test(lines[i])) body.push(lines[i++]);
+      i++;
+      const lang = MD_LANG[fence[2].toLowerCase()] ?? null;
+      out.push(`<pre${lang ? ` class="lang-${lang}"` : ''}>${highlight(body.join('\n'), lang)}</pre>`);
+      continue;
+    }
+    if (!line.trim()) {
+      flush();
+      i++;
+      continue;
+    }
+    const h = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) {
+      flush();
+      out.push(`<h${Math.min(6, h[1].length + 2)} class="md-h${h[1].length}">${mdInline(h[2])}</h${Math.min(6, h[1].length + 2)}>`);
+      i++;
+      continue;
+    }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) {
+      flush();
+      out.push('<hr>');
+      i++;
+      continue;
+    }
+    if (line.includes('|') && i + 1 < lines.length && MD_TABLE_SEP.test(lines[i + 1]) && lines[i + 1].includes('-') && lines[i + 1].includes('|')) {
+      flush();
+      const head = mdCells(line);
+      const align = mdCells(lines[i + 1]).map((c) => (/^:-+:$/.test(c) ? 'center' : /-+:$/.test(c) ? 'right' : /^:-+/.test(c) ? 'left' : ''));
+      const cell = (tag, c, k) => `<${tag}${align[k] ? ` style="text-align:${align[k]}"` : ''}>${mdInline(c)}</${tag}>`;
+      const rows = [];
+      i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+        const cells = mdCells(lines[i++]);
+        rows.push(`<tr>${head.map((_, k) => cell('td', cells[k] ?? '', k)).join('')}</tr>`);
+      }
+      out.push(`<div class="md-table"><table><thead><tr>${head.map((c, k) => cell('th', c, k)).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
+      continue;
+    }
+    if (/^\s{0,3}>/.test(line)) {
+      flush();
+      const body = [];
+      while (i < lines.length && /^\s{0,3}>/.test(lines[i])) body.push(lines[i++].replace(/^\s{0,3}>\s?/, ''));
+      out.push(`<blockquote>${md(body.join('\n'))}</blockquote>`);
+      continue;
+    }
+    if (MD_ITEM.test(line)) {
+      flush();
+      // The whole list block: items, their wrapped lines, and blank lines between items.
+      const items = [];
+      while (i < lines.length) {
+        const l = lines[i];
+        const m = MD_ITEM.exec(l);
+        if (m && !MD_TABLE_SEP.test(l)) {
+          const num = /^\d/.test(m[2]);
+          const task = /^\[([ xX])\]\s+(.*)$/.exec(m[3]);
+          items.push({ ind: m[1].replace(/\t/g, '    ').length, tag: num ? 'ol' : 'ul', start: num ? parseInt(m[2], 10) : 1, text: task ? task[2] : m[3], task: task ? task[1] !== ' ' : null });
+          i++;
+        } else if (l.trim() && /^\s+/.test(l) && items.length && !MD_FENCE.test(l)) {
+          items[items.length - 1].text += ' ' + l.trim();
+          i++;
+        } else if (!l.trim() && i + 1 < lines.length && (MD_ITEM.test(lines[i + 1]) || /^\s{2,}\S/.test(lines[i + 1]))) {
+          i++;
+        } else break;
+      }
+      out.push(mdList(items));
+      continue;
+    }
+    para.push(line);
+    i++;
+  }
+  flush();
+  return out.join('');
+}
+
+/** Nested lists from items with their indentation: deeper items go inside the previous one. */
+function mdList(items) {
+  const root = { ind: -1, lists: [] };
+  const stack = [];
+  for (const it of items) {
+    while (stack.length && stack[stack.length - 1].ind > it.ind) stack.pop();
+    let top = stack[stack.length - 1];
+    if (top && top.ind === it.ind && top.tag !== it.tag) {
+      stack.pop();
+      top = stack[stack.length - 1];
+    }
+    if (!top || top.ind < it.ind) {
+      const list = { ind: it.ind, tag: it.tag, start: it.start, items: [] };
+      const parent = top ? top.items[top.items.length - 1] : root;
+      (parent.lists ??= []).push(list);
+      stack.push(list);
+      top = list;
+    }
+    top.items.push({ ...it, lists: [] });
+  }
+  const render = (list) =>
+    `<${list.tag}${list.tag === 'ol' && list.start !== 1 ? ` start="${list.start}"` : ''}${list.items.some((x) => x.task !== null) ? ' class="tasks"' : ''}>${list.items
+      .map((x) => `<li${x.task !== null ? ' class="task"' : ''}>${x.task !== null ? `<span class="tick${x.task ? ' on' : ''}" aria-label="${x.task ? 'done' : 'to do'}"></span>` : ''}${mdInline(x.text)}${x.lists.map(render).join('')}</li>`)
+      .join('')}</${list.tag}>`;
+  return root.lists.map(render).join('');
 }
 
 // ───────────────────────────── derived info

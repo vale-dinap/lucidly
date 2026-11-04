@@ -391,7 +391,7 @@ mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inhe
 .ev { margin: 10px 0; overflow-wrap: anywhere; }
 .ev-text p { margin: 0 0 8px; }
 .ev-text ul, .ev-text ol { margin: 0 0 8px; padding-left: 20px; }
-.ev-text h4 { font-size: 13px; margin: 10px 0 4px; }
+
 .ev-text code { background: var(--sunken); padding: 1px 4px; border-radius: 4px; }
 .ev-text pre { background: var(--code); padding: 8px 10px; border-radius: var(--r-sm); overflow-x: auto; }
 .ev-prompt { background: var(--sunken); border-radius: var(--r); padding: 9px 12px; white-space: pre-wrap; }
@@ -843,3 +843,32 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .wk-st.st-awake i { background: var(--accent); animation: now-pulse 1.8s ease-in-out infinite; }
 .wk-st.st-err i { background: var(--bad); }
 .wk-note { margin: 8px 0 0; color: var(--faint); font-size: 11px; line-height: 1.4; }
+
+/* ───────── markdown in the details panel */
+.ev-text h3, .ev-text h4, .ev-text h5, .ev-text h6 { margin: 14px 0 6px; line-height: 1.3; font-weight: 640; }
+.ev-text h3 { font-size: 15.5px; }
+.ev-text h4 { font-size: 14px; }
+.ev-text h5 { font-size: 13px; }
+.ev-text h6 { font-size: 12.5px; color: var(--muted); }
+.ev-text > :first-child, .ev-text .who + * { margin-top: 0; }
+.ev-text li { margin: 2px 0; }
+.ev-text li > ul, .ev-text li > ol { margin: 2px 0 0; }
+.ev-text ul.tasks { list-style: none; padding-left: 4px; }
+.ev-text li.task { display: block; }
+.ev-text .tick { display: inline-block; width: 13px; height: 13px; margin: 0 7px -2px 0; border: 1.5px solid var(--border-strong); border-radius: 3.5px; }
+.ev-text .tick.on { background: var(--done); border-color: var(--done); box-shadow: inset 0 0 0 2px var(--surface); }
+.ev-text a { color: var(--accent); text-decoration: none; }
+.ev-text a:hover { text-decoration: underline; }
+.ev-text blockquote { margin: 0 0 8px; padding: 2px 0 2px 12px; border-left: 3px solid var(--border-strong); color: var(--muted); }
+.ev-text blockquote p:last-child { margin-bottom: 0; }
+.ev-text hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+.ev-text s { color: var(--muted); }
+.ev-text pre { margin: 0 0 8px; font-size: 12px; line-height: 1.5; }
+.ev-text pre code, .ev-text td code, .ev-text th code { font-size: 0.95em; }
+.md-table { overflow-x: auto; margin: 0 0 10px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.md-table table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.md-table th, .md-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: normal; }
+.md-table th + th, .md-table td + td { border-left: 1px solid var(--border); }
+.md-table th { background: var(--sunken); font-weight: 600; white-space: nowrap; }
+.md-table tbody tr:last-child td { border-bottom: 0; }
+.md-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--sunken) 45%, transparent); }
