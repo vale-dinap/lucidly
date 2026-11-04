@@ -2903,9 +2903,40 @@ $('#pathSearch').addEventListener('input', (e) => {
   S.pf.q = e.target.value;
   schedule();
 });
-$('#hideChat').addEventListener('change', (e) => {
-  S.pf.hideChat = e.target.checked;
-  schedule();
+// Hide Q&A folds the questions away (and unfolds them back) rather than making them blink.
+const qaEls = () =>
+  S.layout === 'simple'
+    ? [...document.querySelectorAll('#pathView .fg.qa')]
+    : [...document.querySelectorAll('#pathView .task')].filter((el) => el.querySelector(':scope > .task-h .tstat.qa'));
+const FOLD = { duration: 240, easing: 'cubic-bezier(0.3, 0.7, 0.2, 1)' };
+function foldFrames(el) {
+  const cs = getComputedStyle(el);
+  return [
+    { height: `${el.offsetHeight}px`, opacity: 1, marginTop: cs.marginTop, marginBottom: cs.marginBottom, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom },
+    { height: '0px', opacity: 0, marginTop: '0px', marginBottom: '0px', paddingTop: '0px', paddingBottom: '0px' },
+  ];
+}
+function fold(els, open) {
+  return Promise.all(
+    els.map((el) => {
+      const frames = foldFrames(el);
+      el.style.overflow = 'hidden';
+      const anim = el.animate(open ? frames.reverse() : frames, { ...FOLD, fill: open ? 'none' : 'forwards' });
+      return anim.finished.then(() => (el.style.overflow = ''), () => {});
+    }),
+  );
+}
+$('#hideChat').addEventListener('change', async (e) => {
+  const hide = e.target.checked;
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches || S.view !== 'path' || S.pf.mode === 'files';
+  if (hide && !calm) await fold(qaEls(), false);
+  S.pf.hideChat = hide;
+  render();
+  if (!hide && !calm) {
+    const els = qaEls();
+    for (const el of els) el.classList.remove('enter');
+    void fold(els, true);
+  }
 });
 $('#actionsSearch').addEventListener('input', (e) => {
   S.af.q = e.target.value;
