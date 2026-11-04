@@ -555,6 +555,7 @@ function laneHtml() {
   S.laneRows = acts;
   const n = acts.length;
   const B = Math.min(n, 360);
+  const { unitPx: laneUnit, nowW: laneNow, total } = stripScale($('#overview .lane-strip')?.clientWidth || 700, B, ag.status === 'active');
   let rects = '';
   for (let i = 0; i < B; i++) {
     const a = Math.floor((i * n) / B);
@@ -570,9 +571,8 @@ function laneHtml() {
     const last = seg[seg.length - 1];
     const state = bad ? ' · failed' : rec ? ' · failed, then recovered' : live ? ' · running' : '';
     const tip = seg.length > 1 ? `${seg.length} actions · ${clock(seg[0].startedAt)}–${clock(last.startedAt)}${state}` : `${clock(last.startedAt)} · ${last.title}${state}`;
-    rects += barShape(i, h, kind, cls, `data-lb="${b - 1}"`, tip, (($('#overview .lane-strip')?.clientWidth || 700) / Math.max(B + 1, 30)));
+    rects += barShape(i, h, kind, cls, `data-lb="${b - 1}"`, tip, laneUnit);
   }
-  const total = Math.max(B + (ag.status === 'active' ? 1 : 0), 30);
   const title = ag.title.replace(/^Subagent:\s*/, '');
   const un = unresolvedOf(ag);
   const rec = ag.stats?.recovered ?? 0;
@@ -585,7 +585,7 @@ function laneHtml() {
     rec ? `<span>${rec} recovered</span>` : '',
   ].filter(Boolean).join('<i>·</i>');
   const status = ag.status === 'active' ? '<span class="now-dot"></span>running' : STATUS_LABEL[ag.status] ?? ag.status;
-  const nowMark = ag.status === 'active' ? `<rect x="${B + 0.1}" y="0" width="0.8" height="8.5" class="k-now"><title>Working now</title></rect>` : '';
+  const nowMark = laneNow ? nowRect(B, laneNow) : '';
   rects += nowMark;
   if (S.laneShown?.id !== ag.id) S.laneShown = { id: ag.id, at: Date.now() };
   const enter = Date.now() - S.laneShown.at < 250 ? ' enter' : '';
@@ -604,23 +604,50 @@ function laneHtml() {
 }
 const lastOf = (a) => a[a.length - 1];
 
+// The strip always spans its full width: bars stretch to fill it and sit side by side, with a
+// thin gap between them (at most BAR_GAP_PX, or the usual 28% of a slot on long runs).
+const BAR_GAP_PX = 3;
+/** Width (in slot units) and left edge of a bar filling slot `i`; `frac` is its share on long runs. */
+function slotBar(i, unitPx, frac = 0.72) {
+  const w = 1 - Math.min(1 - frac, BAR_GAP_PX / Math.max(1, unitPx));
+  return [i + 0.5 - w / 2, w];
+}
+
+/**
+ * Slot sizes for a strip of `slots` bars plus an optional live mark. On long runs the mark takes
+ * one slot like a bar; on short ones bars stretch, so the mark keeps a slim fixed width instead.
+ */
+function stripScale(px, slots, live) {
+  const NOW_PX = 6;
+  let unitPx = px / Math.max(1, slots + (live ? 1 : 0));
+  let nowW = live ? 1 : 0;
+  if (live && slots && unitPx > NOW_PX * 1.5) {
+    unitPx = (px - NOW_PX) / slots;
+    nowW = NOW_PX / unitPx;
+  }
+  return { unitPx, nowW, total: slots + nowW };
+}
+const nowRect = (x, w) => `<rect x="${x + w * 0.1}" y="0" width="${w * 0.8}" height="8.5" class="k-now"><title>Working now</title></rect>`;
+
 /** A strip bar; file edits get a pointed top (visible once zoomed in enough to be wide). */
 function barShape(i, h, kind, cls, data, tip, unitPx = 8) {
-  const x0 = i + 0.14;
-  const x1 = i + 0.86;
+  const [x0, bw] = slotBar(i, unitPx);
+  const x1 = x0 + bw;
   let top = 8.5 - h;
   const title = `<title>${esc(tip)}</title>`;
   // The tip follows the bar's real width on screen: a gentle roof when wide, none when a bar
   // is only a couple of pixels (zoomed far out, where spikes would just look like noise).
-  const wpx = 0.72 * unitPx;
+  const wpx = bw * unitPx;
   // Zoomed far out the colour already sets edits apart: keep them only a little taller.
   if (kind === 'ed' && wpx < 3 && cls.startsWith('k-ed')) {
     h = 6;
     top = 8.5 - h;
   }
-  if (kind !== 'ed' || wpx < 3) return `<rect x="${x0}" y="${top}" width="0.72" height="${h}" class="${cls}" ${data}>${title}</rect>`;
-  const cap = Math.min(1.6, h / 3, (wpx * 0.5) / 2.6); // 2.6 px per vertical unit (26px / 10)
-  return `<polygon points="${x0},8.5 ${x0},${top + cap} ${i + 0.5},${top} ${x1},${top + cap} ${x1},8.5" class="${cls}" ${data}>${title}</polygon>`;
+  if (kind !== 'ed' || wpx < 3) return `<rect x="${x0}" y="${top}" width="${bw}" height="${h}" class="${cls}" ${data}>${title}</rect>`;
+  const cap = Math.min(1.6, h / 3, (Math.min(wpx, 16) * 0.5) / 2.6); // 2.6 px per vertical unit (26px / 10)
+  // Wide bars (a short run stretched to fit) keep the same small roof at each corner.
+  const run = wpx > 16 ? (8 / wpx) * bw : bw / 2;
+  return `<polygon points="${x0},8.5 ${x0},${top + cap} ${x0 + run},${top} ${x1 - run},${top} ${x1},${top + cap} ${x1},8.5" class="${cls}" ${data}>${title}</polygon>`;
 }
 
 /** One thin bar per action (bucketed on long runs): green = done, red = failed, blue = running. */
@@ -635,7 +662,13 @@ function stripHtml(rows) {
   const span = hi - lo;
   const B = Math.min(span, 360);
   const stripPx = $('#overview .strip')?.clientWidth || ($('#overview').clientWidth || 800) - 34;
-  const unitPx = stripPx / (zoomed ? B + 1 : Math.max(B + 1, 120));
+  // The current task's steps that haven't started yet: the work still ahead, in grey.
+  const g = N(S.run.currentGoal);
+  const pending = hi === n && g ? kids(g).filter((c) => c.type === 'step' && c.status === 'pending') : [];
+  const P = Math.min(pending.length, 40);
+  // While the agent works, a pulsing blue mark holds the live end of the run.
+  const W = hi === n && S.run.status === 'working' && !isStale() ? 1 : 0;
+  const { unitPx, nowW, total } = stripScale(stripPx, B + P, !!W);
   let rects = '';
   let lines = '';
   for (let i = 0; i < B; i++) {
@@ -664,18 +697,12 @@ function stripHtml(rows) {
     const tip = seg.length > 1 ? `${seg.length} actions${mix} · ${clock(seg[0].startedAt)}–${clock(last.startedAt)}${state}` : `${clock(last.startedAt)} · ${last.subagent ? 'subagent · ' : ''}${last.title}${state}`;
     rects += barShape(i, h, kind, cls, `data-b="${lastMain}"`, tip, unitPx);
   }
-  // The current task's steps that haven't started yet: the work still ahead, in grey.
-  const g = N(S.run.currentGoal);
-  const pending = hi === n && g ? kids(g).filter((c) => c.type === 'step' && c.status === 'pending') : [];
-  const P = Math.min(pending.length, 40);
-  // While the agent works, a pulsing blue mark holds the live end of the run.
-  const W = hi === n && S.run.status === 'working' && !isStale() ? 1 : 0;
-  const total = zoomed ? B + W + P : Math.max(B + W + P, 120);
-  if (W) rects += `<rect x="${B + 0.1}" y="0" width="0.8" height="8.5" class="k-now"><title>Working now</title></rect>`;
+  if (W) rects += nowRect(B, nowW);
   pending.slice(0, P).forEach((p, j) => {
-    rects += `<rect x="${B + W + j + 0.14}" y="3.5" width="0.72" height="5" class="k-pend" data-pstep="${p.id}"><title>${esc(`Not started · ${p.title}`)}</title></rect>`;
+    const [px, pw] = slotBar(B + nowW + j, unitPx);
+    rects += `<rect x="${px}" y="3.5" width="${pw}" height="5" class="k-pend" data-pstep="${p.id}"><title>${esc(`Not started · ${p.title}`)}</title></rect>`;
   });
-  if (P) lines += `<line x1="${B + W}" x2="${B + W}" y1="0" y2="10"/>`;
+  if (P) lines += `<line x1="${B + nowW}" x2="${B + nowW}" y1="0" y2="10"/>`;
   const zctl = n > 20
     ? `<span class="zctl"><button data-zoom="out" title="Zoom out" ${zoomed ? '' : 'disabled'}>−</button><button data-zoom="in" title="Zoom in (scroll over the strip)" ${span <= minSpanCount(n) ? 'disabled' : ''}>+</button>${zoomed ? `<button data-zoom="fit" title="Show the whole run">Fit</button>` : ''}</span>`
     : '';
