@@ -1,5 +1,7 @@
 # Lucidly
 
+[![CI](https://github.com/vale-dinap/lucidly/actions/workflows/ci.yml/badge.svg)](https://github.com/vale-dinap/lucidly/actions/workflows/ci.yml)
+
 *See what your AI agent is doing, at a glance.*
 
 ## Purpose
