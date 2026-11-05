@@ -48,7 +48,9 @@ const S = {
   openSteps: new Set(),
   closedSteps: new Set(),
   allActs: new Set(), // units whose full action list is shown
-  expandAll: false,
+  // Expand all / collapse all: true or false once you chose, null until then (the running task
+  // open, and search hits). It wins over the automatic opening; a filter opens nothing by itself.
+  expandAll: null,
   pf: { mode: 'all', hideChat: false, q: '' },
   // File edits view: sort order, files opened, files showing their diffs inline.
   ff: { sort: 'recent', open: new Set(), diffs: new Set(), outside: false, layout: 'files', histDiffs: false },
@@ -449,14 +451,15 @@ function stepMatches(s, q) {
 function isGoalOpen(g) {
   if (S.openGoals.has(g.id)) return true;
   if (S.closedGoals.has(g.id)) return false;
-  if (S.expandAll || filtering()) return true;
+  if (S.expandAll !== null) return S.expandAll;
+  if (pathQuery()) return true; // only the matching tasks are listed: show where they match
   return g.id === S.run.currentGoal || S.run.goals.length === 1;
 }
 
 function isStepOpen(s) {
   if (S.openSteps.has(s.id)) return true;
   if (S.closedSteps.has(s.id)) return false;
-  if (S.expandAll) return true;
+  if (S.expandAll !== null) return S.expandAll;
   const q = pathQuery();
   if (q && !s.title.toLowerCase().includes(q) && stepText(s).includes(q)) return true; // the match is inside
   return s.status === 'active' && s.id === S.run.currentStep;
@@ -1267,8 +1270,8 @@ function stepState(s) {
 function flowOpen(g, q, hit) {
   if (S.openGoals.has(g.id)) return true;
   if (S.closedGoals.has(g.id)) return false;
-  if (S.expandAll) return true;
-  if (q || (S.pf.mode !== 'all' && S.pf.mode !== 'qa')) return hit;
+  if (S.expandAll !== null) return S.expandAll;
+  if (q) return hit;
   return g.id === S.run.currentGoal || S.run.goals.length === 1;
 }
 
@@ -1545,6 +1548,14 @@ function setExpandBtn(collapse) {
   b.textContent = collapse ? 'Collapse all' : 'Expand all';
 }
 
+/** The button's label from the tasks as rendered: Collapse all once every listed one is open. */
+function syncExpandBtn(view, simple) {
+  const rows = [...view.querySelectorAll(simple ? '.fg:not(.qa)' : ':scope > .task')];
+  const collapse = rows.length > 0 && rows.every((el) => el.classList.contains('open'));
+  $('#expandAll').dataset.collapse = collapse ? '1' : '';
+  setExpandBtn(collapse);
+}
+
 const MODE_LABEL = { all: 'All', open: 'Failed', recovered: 'Recovered', agents: 'Subagents', qa: 'Questions' };
 
 /** The filters as chips, plus the same as a menu for when the toolbar is too narrow for chips. */
@@ -1616,7 +1627,7 @@ function renderPath() {
     : nQA
       ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
       : 'No questions answered without work in this run yet: nothing to hide for now';
-  setExpandBtn(files ? S.ff.open.size > 0 : S.expandAll);
+  if (files) setExpandBtn(S.ff.open.size > 0);
   applyFlowZoom();
   const hb = $('#heatBtn');
   hb.hidden = files;
@@ -1641,6 +1652,7 @@ function renderPath() {
       mode === 'qa' ? isQA(g) : mode === 'all' ? !(S.pf.hideChat && isQA(g)) : kids(g).some((s) => s.type === 'step' && stepMatches(s, '')),
     );
     renderFlow(view, shown, q);
+    syncExpandBtn(view, true);
     return;
   }
   if (view.__flow) {
@@ -1656,6 +1668,7 @@ function renderPath() {
       ? '<div class="no-match">Nothing matches these filters.</div>'
       : '<div class="no-match">The run is open. Progress appears as soon as the agent does something.</div>'),
   );
+  syncExpandBtn(view, false);
 }
 
 /** Tokens per minute over the last hour, as a tiny bar chart. */
@@ -2528,7 +2541,7 @@ function render() {
 function connect(runId) {
   S.es?.close();
   // A session opens at the top, on the timeline; the arrow button (or F) jumps to the end.
-  Object.assign(S, { runId, run: null, nodes: {}, selected: null, follow: false, raw: new Map(), lastFollowTarget: null, expandAll: false, firstPaint: true, seenActs: null });
+  Object.assign(S, { runId, run: null, nodes: {}, selected: null, follow: false, raw: new Map(), lastFollowTarget: null, expandAll: null, firstPaint: true, seenActs: null });
   for (const set of [S.openGoals, S.closedGoals, S.openSteps, S.closedSteps, S.allActs, S.openActs, S.closedActs]) set.clear();
   Object.assign(S, { actions: null, actionsStale: true, actionsLimit: 400, stripRows: [], zoom: { a: 0, b: 1 } });
   writeHash();
@@ -3021,7 +3034,8 @@ document.addEventListener('click', (e) => {
       else for (const f of fileEdits()) S.ff.open.add(f.key);
       return schedule();
     }
-    S.expandAll = !S.expandAll;
+    // The button says what it will do, from what is on screen: collapse if every listed task is open.
+    S.expandAll = $('#expandAll').dataset.collapse !== '1';
     for (const set of [S.openGoals, S.closedGoals, S.openSteps, S.closedSteps]) set.clear();
     return schedule();
   }
