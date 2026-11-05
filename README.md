@@ -112,6 +112,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works inside.
 npm test             # unit + integration tests (node:test)
 npm run typecheck    # tsc --noEmit
 npm run build        # compiles src/ to dist/ (runs by itself on npm pack / npm publish)
+node scripts/demo-session.mjs [dir] [--play]   # a made-up session for screenshots and demos (see the script)
 ```
 
 ## What Lucidly is not

@@ -2,3 +2,4 @@ node_modules/
 *.lucidly.json
 .DS_Store
 dist/
+demo-session/
