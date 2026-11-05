@@ -388,12 +388,13 @@ const hasAgent = (s) => descendants(s, (c) => c.type === 'subtask' && c.origin =
 /** A question answered without doing anything. A task still in progress isn't one yet: it may be about to act. */
 const isQA = (g) => g.status !== 'active' && !kids(g).some((c) => c.type === 'step') && !(g.stats?.actions > 0);
 
-const isStale = () => !!S.run?.updatedAt && Date.now() - Date.parse(S.run.updatedAt) > 5 * 60 * 1000;
+const isStale = () => !!S.downAt || (!!S.run?.updatedAt && Date.now() - Date.parse(S.run.updatedAt) > 5 * 60 * 1000);
 const liveEnd = (n) => n.endedAt ?? (isStale() || n.status !== 'active' ? S.run.updatedAt : undefined);
 
 function runState() {
   const r = S.run;
   if (!r) return ['idle', 'No run'];
+  if (S.downAt) return ['down', 'Server stopped'];
   const stale = isStale();
   if (r.status === 'working' && r.currentStep && N(r.currentStep) && openBlockers(N(r.currentStep)).length) return ['blocked', 'Blocked'];
   if (r.status === 'working') return stale ? ['idle', `Quiet · ${ago(r.updatedAt)}`] : ['working', 'Working'];
@@ -532,13 +533,31 @@ function tokStat() {
 // Tell the user when the server runs older engine code than the page it serves.
 async function checkHealth() {
   try {
-    const res = await fetch('/api/health');
+    const res = await fetch('/api/health', { signal: AbortSignal.timeout(8000) });
+    setDown(false);
     // A server without this route predates the page: it is outdated too.
     if (res.status === 404) $('#outdated').hidden = false;
     else if (res.ok) $('#outdated').hidden = !(await res.json()).outdated;
   } catch {
-    // Server unreachable: the status pill already says so.
+    setDown(true);
   }
+}
+
+/**
+ * The Lucidly server stopped (or came back). While it is gone the page says so, in the status pill
+ * and a bar under the header, freezes everything live, and checks every few seconds for its return;
+ * the session's stream reconnects by itself then.
+ */
+function setDown(down) {
+  if (!!S.downAt === down) return;
+  S.downAt = down ? Date.now() : null;
+  clearInterval(S.downPoll);
+  if (down) S.downPoll = setInterval(checkHealth, 3000);
+  const bar = $('#downBar');
+  bar.hidden = !down;
+  if (down) $('#downAt').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  schedule();
+  void syncWake();
 }
 setInterval(checkHealth, 30000);
 addEventListener('load', checkHealth);
@@ -2547,6 +2566,7 @@ function connect(runId) {
   writeHash();
   const es = new EventSource(`/api/s/${runId}/stream`);
   S.es = es;
+  es.addEventListener('open', () => setDown(false));
   es.addEventListener('snapshot', (e) => {
     const snap = JSON.parse(e.data);
     S.run = snap.run;
@@ -2573,8 +2593,9 @@ function connect(runId) {
   });
   es.onerror = async () => {
     try {
-      const res = await fetch('/api/runs');
+      const res = await fetch('/api/runs', { signal: AbortSignal.timeout(8000) });
       const { runs } = await res.json();
+      setDown(false);
       if (!runs.some((r) => r.id === runId) && S.runId === runId) {
         es.close();
         S.run = null;
@@ -2584,7 +2605,8 @@ function connect(runId) {
         openPicker();
       }
     } catch {
-      /* server down; EventSource keeps retrying */
+      // The server is gone: say so. EventSource keeps retrying, and reconnects when it is back.
+      setDown(true);
     }
   };
 }
@@ -2669,7 +2691,7 @@ S.wake = {
   err: '',
 };
 const wakeSupported = () => 'wakeLock' in navigator;
-const agentWorking = () => !!S.run && S.run.status === 'working' && !!S.run.updatedAt && Date.now() - Date.parse(S.run.updatedAt) < QUIET_LIMIT;
+const agentWorking = () => !S.downAt && !!S.run && S.run.status === 'working' && !!S.run.updatedAt && Date.now() - Date.parse(S.run.updatedAt) < QUIET_LIMIT;
 const wakeWanted = () => S.wake.on && wakeSupported() && document.visibilityState === 'visible' && (!S.wake.onlyWorking || agentWorking());
 
 async function syncWake() {

@@ -94,6 +94,8 @@ svg { flex: none; }
 .pill[data-status='waiting'] i { background: var(--warn); }
 .pill[data-status='blocked'] { color: var(--bad); background: var(--bad-bg); }
 .pill[data-status='blocked'] i { background: var(--bad); }
+.pill[data-status='down'] { color: var(--bad); background: var(--bad-bg); }
+.pill[data-status='down'] i { background: var(--bad); }
 
 .seg { display: inline-flex; padding: 2px; background: var(--sunken); border-radius: 9px; gap: 2px; }
 .seg button { border: 0; background: none; padding: 4px 12px; border-radius: 7px; cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 520; }
@@ -971,3 +973,10 @@ pre .dh { color: var(--faint); font-weight: 600; }
 #pathView.fz-small .fn { gap: 0; }
 /* the column keeps its width on screen at any zoom (zoom multiplies CSS pixels, so divide them) */
 #pathView { max-width: calc(940px / var(--fz, 1)); padding: calc(4px / var(--fz, 1)) calc(20px / var(--fz, 1)) calc(120px / var(--fz, 1)); }
+
+/* ───────── server stopped: a bar under the top bar */
+.down-bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 16px; font-size: 12.5px; color: var(--text); background: var(--bad-bg); border-bottom: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); position: relative; z-index: 5; animation: down-in 0.25s ease-out; }
+.down-bar b { color: var(--bad); font-weight: 650; }
+.down-bar code { padding: 1px 5px; border-radius: 4px; background: var(--surface); font-size: 11.5px; }
+.down-bar svg { width: 16px; height: 16px; fill: none; stroke: var(--bad); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes down-in { from { opacity: 0; transform: translateY(-4px); } }
