@@ -40,6 +40,8 @@ const S = {
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // Token heat: a green-to-red glow around tasks and steps by how many tokens they used.
   heat: localStorage.getItem('lucidly.heat') === '1',
+  // Zoom of the simple view (1 = normal), one of FLOW_ZOOMS.
+  fz: Number(localStorage.getItem('lucidly.flowZoom')) || 1,
   // path view
   openGoals: new Set(),
   closedGoals: new Set(),
@@ -1615,6 +1617,7 @@ function renderPath() {
       ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
       : 'No questions answered without work in this run yet: nothing to hide for now';
   setExpandBtn(files ? S.ff.open.size > 0 : S.expandAll);
+  applyFlowZoom();
   const hb = $('#heatBtn');
   hb.hidden = files;
   hb.classList.toggle('on', S.heat);
@@ -2744,6 +2747,65 @@ function toggleTokens(show = $('#tokensPop').hidden) {
   renderTokens();
 }
 
+// ───────────────────────────── simple view zoom
+/** The zoom steps of the simple view: half to twice the normal size. */
+const FLOW_ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
+
+/**
+ * Zooms the simple view by a step (+1 / -1), or back to normal (0). It scales the layout itself
+ * (CSS zoom), so text stays sharp and the chains keep scrolling; the spot in the middle of the
+ * pane stays put while everything grows or shrinks around it.
+ */
+function zoomFlow(dir) {
+  const i = FLOW_ZOOMS.indexOf(S.fz);
+  setFlowZoom(dir === 0 ? 1 : FLOW_ZOOMS[Math.max(0, Math.min(FLOW_ZOOMS.length - 1, (i < 0 ? 3 : i) + dir))]);
+}
+
+function setFlowZoom(next) {
+  if (!next || next === S.fz) return;
+  const pane = $('#pane');
+  const view = $('#pathView');
+  const top = view.offsetTop;
+  const mid = pane.scrollTop + pane.clientHeight / 2 - top;
+  const ratio = next / S.fz;
+  S.fz = next;
+  localStorage.setItem('lucidly.flowZoom', String(next));
+  applyFlowZoom();
+  if (mid > 0) pane.scrollTop = top + mid * ratio - pane.clientHeight / 2;
+}
+
+function applyFlowZoom() {
+  const simple = S.layout === 'simple' && S.view === 'path';
+  const view = $('#pathView');
+  view.style.zoom = simple && S.fz !== 1 ? String(S.fz) : '';
+  view.style.setProperty('--fz', String(simple ? S.fz : 1));
+  view.classList.toggle('fz-small', simple && S.fz < 0.75);
+  const box = $('#flowZoom');
+  box.hidden = !simple;
+  const range = $('#flowZoomRange');
+  range.value = String(Math.max(0, FLOW_ZOOMS.indexOf(S.fz)));
+  range.setAttribute('aria-valuetext', `${Math.round(S.fz * 100)}%`);
+  const v = box.querySelector('[data-fz="0"]');
+  v.textContent = `${Math.round(S.fz * 100)}%`;
+  v.title = S.fz === 1 ? 'Zoom of the simple view (Ctrl+scroll, - and =)' : 'Back to 100% (0)';
+}
+
+$('#flowZoomRange').addEventListener('input', (e) => setFlowZoom(FLOW_ZOOMS[Number(e.target.value)]));
+
+// Ctrl+scroll over the simple view zooms it (one step per notch), instead of the whole page.
+let wheelAt = 0;
+$('#pathView').addEventListener(
+  'wheel',
+  (e) => {
+    if (!e.ctrlKey || S.layout !== 'simple' || S.view !== 'path') return;
+    e.preventDefault();
+    if (Date.now() - wheelAt < 140) return;
+    wheelAt = Date.now();
+    zoomFlow(e.deltaY < 0 ? 1 : -1);
+  },
+  { passive: false },
+);
+
 function toggleHeat() {
   S.heat = !S.heat;
   localStorage.setItem('lucidly.heat', S.heat ? '1' : '0');
@@ -2811,6 +2873,7 @@ document.addEventListener('click', (e) => {
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
   if (on('[data-pin]')) return togglePin();
   if (on('#heatBtn')) return toggleHeat();
+  if ((el = on('[data-fz]'))) return zoomFlow(Number(el.dataset.fz));
   if (on('[data-fsel]')) {
     S.fselOpen = !S.fselOpen;
     return schedule();
@@ -3242,6 +3305,7 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'o') openPicker();
   else if (e.key === 'p' && S.run) togglePin();
   else if (e.key === 'h' && S.run && S.view === 'path') toggleHeat();
+  else if ((e.key === '-' || e.key === '=' || e.key === '+' || e.key === '0') && S.run && S.view === 'path' && S.layout === 'simple') zoomFlow(e.key === '-' ? -1 : e.key === '0' ? 0 : 1);
   else if (e.key === 't' && S.run?.usage) toggleTokens();
   else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
   else if (e.key === 'Escape' && !$('#wakePop').hidden) toggleWake(false);

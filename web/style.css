@@ -949,3 +949,25 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .fm-more:hover { background: var(--hover); color: var(--text); }
 .fcap.dim { opacity: 0.32; }
 .perr { line-height: 1.6; } .perr .tbtn { margin-left: 6px; }
+
+/* ───────── simple view zoom (CSS zoom on #pathView: --fz is its factor) */
+.zoomer { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 2px 0 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); }
+.zoomer .zv { min-width: 42px; height: 24px; padding: 0 4px; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.zoomer .zv:hover { background: var(--hover); color: var(--text); }
+/* a mini stepped slider: 84px wide, so its 7 stops (12px thumb) fall every 12px, with a tick at each */
+#flowZoomRange { -webkit-appearance: none; appearance: none; width: 84px; height: 14px; margin: 0; background: none; cursor: pointer; }
+#flowZoomRange::-webkit-slider-runnable-track { height: 14px; background: radial-gradient(circle, var(--border-strong) 1.6px, transparent 2px) 0 50% / 12px 100% repeat-x, linear-gradient(var(--border-strong), var(--border-strong)) 6px 50% / 72px 2px no-repeat; }
+#flowZoomRange::-moz-range-track { height: 14px; background: radial-gradient(circle, var(--border-strong) 1.6px, transparent 2px) 0 50% / 12px 100% repeat-x, linear-gradient(var(--border-strong), var(--border-strong)) 6px 50% / 72px 2px no-repeat; }
+#flowZoomRange::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: 1px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); transition: transform 0.12s; }
+#flowZoomRange::-moz-range-thumb { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); }
+#flowZoomRange:hover::-webkit-slider-thumb, #flowZoomRange:active::-webkit-slider-thumb { transform: scale(1.2); }
+#flowZoomRange:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+/* zoomed out, text keeps a readable floor on screen (about 11px titles, 10px facts) */
+#pathView .fg-title { font-size: max(14px, calc(11px / var(--fz, 1))); }
+#pathView .fg.qa .fg-title { font-size: max(13px, calc(10.5px / var(--fz, 1))); }
+#pathView .fg-meta { font-size: max(12px, calc(10px / var(--fz, 1))); }
+/* and step labels go: below 75% they would be too small to read (hover shows them) */
+#pathView.fz-small .fn-l { display: none; }
+#pathView.fz-small .fn { gap: 0; }
+/* the column keeps its width on screen at any zoom (zoom multiplies CSS pixels, so divide them) */
+#pathView { max-width: calc(940px / var(--fz, 1)); padding: calc(4px / var(--fz, 1)) calc(20px / var(--fz, 1)) calc(120px / var(--fz, 1)); }
