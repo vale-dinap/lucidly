@@ -2946,6 +2946,12 @@ document.addEventListener('click', (e) => {
   }
   if ((el = on('[data-fnode]'))) {
     const key = el.closest('.fn')?.dataset.key ?? '';
+    // Clicking the selected node again clears the selection (and folds its capsule).
+    if (el.closest('.fn')?.classList.contains('sel')) {
+      S.follow = false;
+      S.selected = null;
+      return schedule();
+    }
     S.flowPick = key === 'start' || key === 'end' ? key : null;
     return select(el.dataset.fnode);
   }
@@ -2974,6 +2980,8 @@ document.addEventListener('click', (e) => {
     if (!open) return select(g.id);
     return schedule();
   }
+  // The selected mark in a capsule, clicked again: back to its step (the capsule stays open).
+  if ((el = on('#pathView .fcap .fm.sel'))) return select(el.closest('.fcap').dataset.key.slice(2));
   if ((el = on('#pathView [data-select]'))) return select(el.dataset.select);
 });
 
