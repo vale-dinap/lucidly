@@ -1,6 +1,6 @@
 {
   "name": "@vale-dinap/lucidly",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "See what your AI agent is doing, at a glance.",
   "keywords": [
     "claude",
@@ -46,6 +46,7 @@
     "bin/",
     "dist/",
     "web/",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ]
 }
