@@ -2580,10 +2580,25 @@ async function openPicker() {
   for (const b of dlg.querySelectorAll('[data-scope]')) b.classList.toggle('on', b.dataset.scope === S.pickerScope);
   const list = $('#pickerList');
   list.innerHTML = '<li class="mute">Loading…</li>';
-  const [{ runs }, data] = await Promise.all([
-    fetch('/api/runs').then((r) => r.json()),
-    fetch(`/api/sessions?scope=${S.pickerScope}`).then((r) => r.json()),
-  ]);
+  // Only the latest request may fill the list (switching tabs while one is slow), and a failure
+  // says so with a retry instead of leaving "Loading…" up for good.
+  const ticket = (S.pickerTicket = (S.pickerTicket ?? 0) + 1);
+  const get = async (url) => {
+    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    return r.json();
+  };
+  let runs, data;
+  try {
+    [{ runs }, data] = await Promise.all([get('/api/runs'), get(`/api/sessions?scope=${S.pickerScope}`)]);
+    if (!Array.isArray(runs) || !Array.isArray(data?.sessions)) throw new Error('unexpected reply from the server');
+  } catch (e) {
+    if (ticket !== S.pickerTicket) return;
+    const why = e?.name === 'TimeoutError' ? 'the server took too long to answer' : e instanceof TypeError ? 'the Lucidly server is not reachable (is it still running?)' : (e?.message ?? String(e));
+    list.innerHTML = `<li class="mute perr">Couldn't load the sessions: ${esc(why)}. <button type="button" class="tbtn" data-picker-retry>Retry</button></li>`;
+    return;
+  }
+  if (ticket !== S.pickerTicket) return;
   const others = runs.filter((r) => !r.key.startsWith('claude:'));
   $('#pickerOpen').innerHTML = others.length
     ? `<div class="psec">Open in Lucidly</div><ul class="plist">${others
@@ -2975,6 +2990,7 @@ document.addEventListener('click', (e) => {
     $('#picker').close();
     return connect(el.dataset.run);
   }
+  if (on('[data-picker-retry]')) return void openPicker();
   if ((el = on('[data-scope]'))) {
     S.pickerScope = el.dataset.scope;
     return void openPicker();

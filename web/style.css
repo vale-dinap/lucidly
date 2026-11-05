@@ -948,3 +948,4 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .fm-more { height: 18px; padding: 0 5px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer; }
 .fm-more:hover { background: var(--hover); color: var(--text); }
 .fcap.dim { opacity: 0.32; }
+.perr { line-height: 1.6; } .perr .tbtn { margin-left: 6px; }
