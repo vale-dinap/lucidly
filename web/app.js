@@ -342,7 +342,7 @@ function heatStyle(id) {
   const h = S.heatMap?.get(id);
   if (!h) return '';
   const hue = Math.round(120 * (1 - h.v));
-  return ` style="--heat:hsl(${hue} 85% 52%);--heat-a:${(0.35 + 0.55 * h.v).toFixed(2)}"`;
+  return ` style="--heat:hsl(${hue} 100% 50%);--heat-a:${(0.5 + 0.45 * h.v).toFixed(2)}"`;
 }
 const heatTip = (id) => {
   const h = S.heatMap?.get(id);

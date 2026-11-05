@@ -917,7 +917,8 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .heat-btn.on { color: #f5772e; border-color: color-mix(in srgb, #f5772e 55%, var(--border)); background: color-mix(in srgb, #f5772e 12%, var(--surface)); }
 .heat-btn.on svg { fill: color-mix(in srgb, #f5772e 35%, transparent); }
 .heat-on [style*='--heat'] { --glow: color-mix(in srgb, var(--heat) calc(var(--heat-a) * 100%), transparent); }
-.heat-on .fg-n[style*='--heat'], .heat-on .tstat[style*='--heat'] { box-shadow: 0 0 0 2px var(--glow), 0 0 10px 2px var(--glow); }
+/* task nodes and dots: blur only (no solid ring), so it reads as a glow rather than an outline */
+.heat-on .fg-n[style*='--heat'], .heat-on .tstat[style*='--heat'] { box-shadow: 0 0 7px -1px var(--glow), 0 0 16px 2px color-mix(in srgb, var(--glow) 60%, transparent); }
 /* step dots: the dot is the ::before; a running step keeps its own pulsing ring */
 .heat-on .step:not(.s-active) > .step-h .mk[style*='--heat']::before { box-shadow: 0 0 0 2px var(--glow), 0 0 8px 2px var(--glow); }
 .heat-on .fn-s[style*='--heat'] .shp { filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 7px var(--glow)); }
