@@ -922,3 +922,28 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .heat-on .step:not(.s-active) > .step-h .mk[style*='--heat']::before { box-shadow: 0 0 0 2px var(--glow), 0 0 8px 2px var(--glow); }
 .heat-on .fn-s[style*='--heat'] .shp { filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 7px var(--glow)); }
 .heat-on .fg-n, .heat-on .tstat, .heat-on .mk::before, .heat-on .fn-s .shp { transition: box-shadow 0.35s, filter 0.35s; }
+
+/* ───────── simple view: the selected step opened into a capsule of its actions */
+.fcap { position: relative; z-index: 1; flex: none; box-sizing: border-box; margin-left: -20px; padding: 4px 0 0 10px; align-self: flex-start; }
+.fcap::before { content: ''; position: absolute; top: 17px; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--border-strong); }
+.fcap.enter { animation: fcap-in 0.28s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes fcap-in { from { max-width: 0; padding-left: 0; padding-right: 0; margin-left: 0; opacity: 0; overflow: hidden; } 99% { max-width: 400px; overflow: hidden; } to { max-width: 400px; } }
+.fcap-in { position: relative; z-index: 1; display: flex; align-items: center; gap: 3px; height: 28px; padding: 0 4px; border-radius: 14px; background: var(--sunken); border: 1px solid var(--border); transition: box-shadow 0.35s; }
+.heat-on .fcap-in[style*='--heat'] { box-shadow: 0 0 0 1.5px var(--glow), 0 0 10px 1px var(--glow); }
+.fm { --c: var(--other); position: relative; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--c); background: color-mix(in srgb, var(--c) 24%, var(--surface)); transition: transform 0.15s; }
+.fm.m-ed { --c: var(--edit); }
+.fm.m-cmd { --c: var(--done); }
+.fm.m-sa { --c: var(--agent); }
+.fm.s-bad { --c: var(--bad); }
+.fm.s-rec { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--bad) 60%, transparent); }
+.fm.s-live { --c: var(--accent); animation: fm-live 1.6s ease-in-out infinite; }
+@keyframes fm-live { 50% { background: color-mix(in srgb, var(--accent) 34%, var(--surface)); } }
+.fm:hover { transform: scale(1.18); }
+.fm.sel { box-shadow: 0 0 0 2px var(--accent); }
+.fm .k { display: grid; place-items: center; }
+.fm svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.fcap.enter .fm { animation: fm-in 0.22s calc(0.06s + var(--j) * 16ms) ease-out both; }
+@keyframes fm-in { from { opacity: 0; transform: scale(0.4); } }
+.fm-more { height: 18px; padding: 0 5px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.fm-more:hover { background: var(--hover); color: var(--text); }
+.fcap.dim { opacity: 0.32; }

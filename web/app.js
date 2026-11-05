@@ -1306,6 +1306,8 @@ function chainItems(g, q) {
     ].filter(Boolean).join('\n');
     const badge = (st === 'bad' ? '<span class="fn-b bad">!</span>' : rec ? '<span class="fn-b rec"></span>' : '') + (a > 1 ? `<span class="fn-n">${a > 99 ? '99+' : a}</span>` : '');
     items.push({ ...flowNode({ key: `s:${s.id}`, id: s.id, kind, st, label: s.title, tip, badge, extra: (s.untracked ? ' untr' : '') + dim }), i });
+    const cap = capsuleItem(s, dim);
+    if (cap) items.push(cap);
   });
   const reached = !!g.outcome || g.status === 'done';
   const st = reached ? 'done' : g.status === 'waiting' ? 'wait' : 'pend';
@@ -1316,10 +1318,57 @@ function chainItems(g, q) {
   return items;
 }
 
+/** At most this many action marks in a capsule; the rest are a "+N" that opens the step. */
+const CAP_MAX = 12;
+const MARK_KIND = { edit: 'ed', write: 'ed', command: 'cmd', agent: 'sa' };
+
+/**
+ * The selected step, opened in place: a capsule of small marks, one per action, in the usual
+ * colours (failed red, recovered ringed, running blue). Only while the step or one of its
+ * actions is selected, so the chain stays as short as ever otherwise.
+ */
+function capsuleItem(s, dim) {
+  if (!S.selected) return null;
+  const acts = descendants(s, isAct).sort((x, y) => ((x.startedAt ?? '') < (y.startedAt ?? '') ? -1 : 1));
+  if (!acts.length || (S.selected !== s.id && !acts.some((a) => a.id === S.selected))) return null;
+  const marks = acts.slice(0, acts.length > CAP_MAX ? CAP_MAX - 1 : CAP_MAX).map((a, j) => {
+    const st = isUnresolved(a) ? 's-bad' : a.status === 'failed' ? 's-rec' : a.status === 'active' ? 's-live' : '';
+    const tip = [
+      a.title,
+      [MARK_LABEL[a.kind] ?? 'Action', a.endedAt ? dur(a.startedAt, a.endedAt) : a.status === 'active' ? 'running' : ''].filter(Boolean).join(' · '),
+      st === 's-bad' ? `Failed${a.issue ? ': ' + clip(a.issue, 160) : ''}` : st === 's-rec' ? 'Failed, then recovered' : '',
+    ].filter(Boolean).join('\n');
+    return `<button type="button" class="fm m-${MARK_KIND[a.kind] ?? 'rd'} ${st}${S.selected === a.id ? ' sel' : ''}" style="--j:${j}" data-select="${a.id}" data-node="${a.id}" title="${esc(tip)}" aria-label="${esc(a.title)}">${icon(a.kind)}</button>`;
+  });
+  const rest = acts.length - marks.length;
+  const more = rest ? `<button type="button" class="fm-more" data-select="${s.id}" title="${plural(rest, 'more action')}: all of them are in the panel">+${rest}</button>` : '';
+  return { key: `c:${s.id}`, st: 'cap', cls: `fcap${dim}`, html: `<div class="fcap-in"${heatStyle(s.id)}>${marks.join('')}${more}</div>` };
+}
+const MARK_LABEL = { read: 'Read', edit: 'Edit', write: 'Write', command: 'Command', search: 'Search', web: 'Web', agent: 'Subagent', ask: 'Question', other: 'Other' };
+
+/** A capsule closing: it folds back to nothing, pulling the nodes after it in, then goes. */
+function foldAway(el) {
+  if (el.__leaving) return;
+  el.__leaving = true;
+  el.style.overflow = 'hidden';
+  const cs = getComputedStyle(el);
+  el.__anim = el.animate(
+    [
+      { maxWidth: `${el.offsetWidth}px`, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight, marginLeft: cs.marginLeft, opacity: 1 },
+      { maxWidth: '0px', paddingLeft: '0px', paddingRight: '0px', marginLeft: '0px', opacity: 0 },
+    ],
+    { duration: 220, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' },
+  );
+  el.__anim.onfinish = () => el.__leaving && el.remove();
+}
+
 /** Keyed update of a list of elements: reuse, reorder, add (with an entrance) and remove. */
 function reconcile(parent, items, animate) {
   const old = new Map();
   for (const el of parent.children) old.set(el.dataset.key, el);
+  // Capsules on their way out stay where they are while they fold (see foldAway).
+  const keep = new Set(items.map((it) => it.key));
+  for (const [k, el] of old) if (!keep.has(k) && el.classList.contains('fcap')) el.__leaving ||= 'soon';
   let prev = null;
   for (const it of items) {
     let el = old.get(it.key);
@@ -1328,6 +1377,12 @@ function reconcile(parent, items, animate) {
       el = document.createElement('div');
       el.dataset.key = it.key;
     } else old.delete(it.key);
+    if (el.__leaving) {
+      // Selected again while folding: open it back up.
+      el.__anim?.cancel();
+      el.__leaving = false;
+      el.style.overflow = '';
+    }
     const turnedDone = !fresh && el.__st && el.__st !== it.st && it.st === 'done';
     if (el.__cls !== it.cls) {
       el.className = it.cls;
@@ -1344,11 +1399,19 @@ function reconcile(parent, items, animate) {
       el.classList.add(c);
       setTimeout(() => el.classList.remove(c), 900);
     }
-    const next = prev ? prev.nextSibling : parent.firstChild;
+    let next = prev ? prev.nextSibling : parent.firstChild;
+    while (next && next.__leaving && next !== el) next = next.nextSibling;
     if (next !== el) parent.insertBefore(el, next);
     prev = el;
+    // A capsule that opens past the chain's edge: bring it into view once it has its width.
+    if (fresh && it.st === 'cap') setTimeout(() => el.isConnected && el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }), 300);
   }
-  for (const el of old.values()) el.remove();
+  for (const el of old.values()) {
+    if (el.__leaving === 'soon') {
+      el.__leaving = false;
+      foldAway(el);
+    } else if (!el.__leaving) el.remove();
+  }
 }
 
 /** Keeps the working node of a live chain in view, unless you scrolled the chain yourself. */
@@ -3157,7 +3220,7 @@ const tipEl = document.createElement('div');
 tipEl.className = 'tip';
 tipEl.hidden = true;
 document.body.append(tipEl);
-const TIP_TARGET = '#overview .strip > rect, #overview .strip > polygon, #overview .layers > *';
+const TIP_TARGET = '#overview .strip > rect, #overview .strip > polygon, #overview .layers > *, #pathView .fcap .fm, #pathView .fcap .fm-more';
 function tipText(el) {
   if (el.dataset.tip === undefined) {
     const t = el.querySelector(':scope > title');
