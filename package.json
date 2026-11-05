@@ -12,12 +12,20 @@
   "scripts": {
     "start": "node src/cli.ts",
     "test": "node --test \"test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
   },
   "author": "Valerio Di Napoli",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "files": [
+    "bin/",
+    "dist/",
+    "web/",
+    "NOTICE"
+  ]
 }
