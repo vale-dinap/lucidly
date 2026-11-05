@@ -4,7 +4,7 @@
 
 *See what your AI agent is doing, at a glance.*
 
-<video src="https://github.com/user-attachments/assets/1d562889-780d-4b70-88e7-e21bc5538e40" controls muted width="100%"></video>
+https://github.com/user-attachments/assets/ff9ff898-4317-4e78-99e4-caac09b620ca
 
 ## Quick start
 
@@ -54,19 +54,19 @@ All of these show a made-up demo session (`scripts/demo-session.mjs`).
 
 **Drill down.** Open a step in place to see each of its actions, hover one for what it did, and click it for its full output.
 
-<video src="https://github.com/user-attachments/assets/0f0e3775-8f9b-4972-aa48-387297197bd5" controls muted width="100%"></video>
+https://github.com/user-attachments/assets/a8d20d0e-41c5-4ada-a9d5-b9cf6541714f
 
 **Where did the tokens go?** Token heat makes every task and step glow from green to red by the tokens it used, relative to the rest of the run.
 
-<video src="https://github.com/user-attachments/assets/e7d25161-a8f8-4151-b1ad-374283542b42" controls muted width="100%"></video>
+https://github.com/user-attachments/assets/df84be05-f78d-45f5-8feb-2f0439094efd
 
 **What changed.** Every file the agent edited, with the diff of each change, by file or in time order.
 
-<video src="https://github.com/user-attachments/assets/f6a688a2-c719-48b6-a2c6-21f4e9ca47a3" controls muted width="100%"></video>
+https://github.com/user-attachments/assets/08240389-cf8b-4216-ac5e-d06cd6bc79a4
 
 **Every action, filterable.** The full history of commands, edits, reads and subagent calls: filter by kind, failures or task, search, and open any of them.
 
-<video src="https://github.com/user-attachments/assets/14139ec0-dd82-4bbd-9a37-cf78147dce83" controls muted width="100%"></video>
+https://github.com/user-attachments/assets/a11f0f13-b1f4-42bd-920c-c0b9cd8ca7e4
 
 **The detailed view**, with a task open: its steps, the models that worked on them and their tokens, the files and commands involved, and a subagent's work.
 
