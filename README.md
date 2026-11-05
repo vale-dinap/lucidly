@@ -4,6 +4,16 @@
 
 *See what your AI agent is doing, at a glance.*
 
+## Quick start
+
+From a project folder where you use Claude Code (Node.js 22.18 or newer):
+
+```sh
+npx @vale-dinap/lucidly
+```
+
+It opens that folder's latest session in your browser and follows it live while you keep working. To keep the `lucidly` command around, install it: see [Getting started](#getting-started).
+
 ## Purpose
 
 AI agents are increasingly capable of working on long, multi-step tasks on their own. While they work, most of them report their progress as a continuous stream of text: plans, tool calls, file reads, command outputs, reasoning, errors and retries. That stream is complete, but it is hard to follow. To find out what the agent is doing right now, what it has already finished, or where it got stuck, the user has to read through a fast-moving wall of text and often scroll back through a long history to find the relevant part.
@@ -51,8 +61,6 @@ Requires Node.js 22.18 or newer. Install the `lucidly` command from npm:
 ```sh
 npm install -g @vale-dinap/lucidly
 ```
-
-or try it without installing: `npx @vale-dinap/lucidly`.
 
 To run it from a clone instead (Node runs the TypeScript sources directly, no build needed):
 
