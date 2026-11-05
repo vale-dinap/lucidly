@@ -2149,15 +2149,50 @@ function secHtml(key, title, body, ctl = '') {
   return `<details class="d-sec" data-sec="${key}"${S.closedSecs.has(key) ? '' : ' open'}><summary>${CHEV}${title}${ctl ? `<span class="ctl">${ctl}</span>` : ''}</summary><div class="d-body">${body}</div></details>`;
 }
 
+/**
+ * The details panel slides open and shut (fast) instead of snapping: its width animates while
+ * its content keeps the final width, so the text doesn't rewrap as it goes.
+ */
+function panelAnim(el, open) {
+  // Turned around halfway: carry on from the width it has now.
+  const from = el.__anim && !el.hidden ? el.offsetWidth : null;
+  el.__anim?.cancel();
+  el.__closing = !open;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.hidden = !open;
+    el.__closing = false;
+    return;
+  }
+  el.hidden = false;
+  const w = el.offsetWidth;
+  const px = `${w}px`;
+  el.style.setProperty('--dw', px);
+  el.classList.add('anim');
+  const a = (el.__anim = el.animate(
+    open ? [{ flexBasis: `${from ?? 0}px`, opacity: from === null ? 0.3 : 1 }, { flexBasis: px, opacity: 1 }] : [{ flexBasis: `${from ?? w}px`, opacity: 1 }, { flexBasis: '0px', opacity: 0.3 }],
+    { duration: open ? 180 : 160, easing: open ? 'cubic-bezier(.2,.7,.3,1)' : 'cubic-bezier(.4,0,.7,1)', fill: 'forwards' },
+  ));
+  a.onfinish = () => {
+    if (el.__anim !== a) return;
+    el.__anim = null;
+    el.classList.remove('anim');
+    if (!open) {
+      el.hidden = true;
+      el.__closing = false;
+    }
+    a.cancel();
+  };
+}
+
 function renderDetail() {
   const el = $('#detail');
   const n = N(S.selected);
   if (!n || !S.run) {
-    el.hidden = true;
+    if (!el.hidden && !el.__closing) panelAnim(el, false);
     delete el.dataset.shown;
     return;
   }
-  el.hidden = false;
+  if (el.hidden || el.__closing) panelAnim(el, true);
   const meta = [
     n.startedAt ? `Started ${ago(n.startedAt)}` : '',
     n.startedAt && (n.endedAt || n.status === 'active') ? `${n.endedAt ? 'Took' : 'Running for'} ${dur(n.startedAt, liveEnd(n))}` : '',
