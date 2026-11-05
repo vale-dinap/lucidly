@@ -31,33 +31,32 @@
   --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e0f12;
-    --surface: #15161a;
-    --sunken: #1b1c21;
-    --hover: #1d1e24;
-    --border: #25262d;
-    --border-strong: #31323a;
-    --text: #ececf1;
-    --muted: #9b9ba6;
-    --faint: #62626d;
-    --accent: #7096ff;
-    --accent-bg: #1a2340;
-    --done: #3fcf8e;
-    --done-bg: #12291f;
-    --bad: #ff6b6f;
-    --bad-bg: #331a1c;
-    --warn: #e9b04a;
-    --warn-bg: #30260f;
-    --agent: #a98cff;
-    --edit: #e3a43c;
-    --other: #3d98a8;
-    --agent-bg: #251f3d;
-    --code: #111216;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    color-scheme: dark;
-  }
+/* Dark: <html data-theme="dark">, set before the first paint from the setting or the system's. */
+:root[data-theme='dark'] {
+  --bg: #0e0f12;
+  --surface: #15161a;
+  --sunken: #1b1c21;
+  --hover: #1d1e24;
+  --border: #25262d;
+  --border-strong: #31323a;
+  --text: #ececf1;
+  --muted: #9b9ba6;
+  --faint: #62626d;
+  --accent: #7096ff;
+  --accent-bg: #1a2340;
+  --done: #3fcf8e;
+  --done-bg: #12291f;
+  --bad: #ff6b6f;
+  --bad-bg: #331a1c;
+  --warn: #e9b04a;
+  --warn-bg: #30260f;
+  --agent: #a98cff;
+  --edit: #e3a43c;
+  --other: #3d98a8;
+  --agent-bg: #251f3d;
+  --code: #111216;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -542,9 +541,7 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* ───────── syntax colours (GitHub-like) */
 :root { --tk-k: #cf222e; --tk-s: #0a3069; --tk-c: #6e7781; --tk-n: #0550ae; --tk-f: #8250df; --tk-v: #953800; --tk-b: #0550ae; --tk-fl: #116329; --tk-o: #cf222e; }
-@media (prefers-color-scheme: dark) {
-  :root { --tk-k: #ff7b72; --tk-s: #a5d6ff; --tk-c: #8b949e; --tk-n: #79c0ff; --tk-f: #d2a8ff; --tk-v: #ffa657; --tk-b: #79c0ff; --tk-fl: #7ee787; --tk-o: #ff7b72; }
-}
+:root[data-theme='dark'] { --tk-k: #ff7b72; --tk-s: #a5d6ff; --tk-c: #8b949e; --tk-n: #79c0ff; --tk-f: #d2a8ff; --tk-v: #ffa657; --tk-b: #79c0ff; --tk-fl: #7ee787; --tk-o: #ff7b72; }
 .tk-k { color: var(--tk-k); }
 .tk-s { color: var(--tk-s); }
 .tk-c { color: var(--tk-c); font-style: italic; }

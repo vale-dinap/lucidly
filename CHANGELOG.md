@@ -7,6 +7,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 ### Added
 
 - **A clear sign when the Lucidly server stops.** The status pill turns red ("Server stopped") and a bar under the top bar says the page no longer updates and since when. Live timers and animations stop, and keep-awake "only while working" lets go. Start `lucidly` again and the page reconnects by itself, and the warning goes.
+- **A light / dark theme switch**, at the right end of the top bar: System (the default, following the operating system), Light or Dark. The choice is remembered.
 
 ## [0.2.0] - 2026-11-05
 

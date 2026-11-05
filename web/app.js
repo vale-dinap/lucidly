@@ -40,6 +40,8 @@ const S = {
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // Token heat: a green-to-red glow around tasks and steps by how many tokens they used.
   heat: localStorage.getItem('lucidly.heat') === '1',
+  // Colour theme: 'system' (follows the OS), 'light' or 'dark'.
+  theme: ['light', 'dark'].includes(localStorage.getItem('lucidly.theme')) ? localStorage.getItem('lucidly.theme') : 'system',
   // Zoom of the simple view (1 = normal), one of FLOW_ZOOMS.
   fz: Number(localStorage.getItem('lucidly.flowZoom')) || 1,
   // path view
@@ -2841,6 +2843,36 @@ $('#pathView').addEventListener(
   { passive: false },
 );
 
+// ───────────────────────────── theme
+const THEMES = {
+  system: { label: 'System', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.5" /><path d="M9 20h6M12 16v4" /></svg>' },
+  light: { label: 'Light', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.8" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" /></svg>' },
+  dark: { label: 'Dark', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" /></svg>' },
+};
+const THEME_ORDER = ['system', 'light', 'dark'];
+const darkMedia = matchMedia('(prefers-color-scheme: dark)');
+
+/** Applies the theme (the page's own script in <head> did it once before the first paint). */
+function applyTheme() {
+  const dark = S.theme === 'dark' || (S.theme === 'system' && darkMedia.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(S.theme) + 1) % THEME_ORDER.length];
+  const b = $('#themeBtn');
+  b.innerHTML = THEMES[S.theme].icon;
+  b.title = `Theme: ${THEMES[S.theme].label}${S.theme === 'system' ? ` (${dark ? 'dark' : 'light'})` : ''}. Click for ${THEMES[next].label}`;
+  b.setAttribute('aria-label', b.title);
+}
+
+/** System, then Light, then Dark: remembered, except System, which is the default. */
+function cycleTheme() {
+  S.theme = THEME_ORDER[(THEME_ORDER.indexOf(S.theme) + 1) % THEME_ORDER.length];
+  if (S.theme === 'system') localStorage.removeItem('lucidly.theme');
+  else localStorage.setItem('lucidly.theme', S.theme);
+  applyTheme();
+}
+darkMedia.addEventListener('change', () => S.theme === 'system' && applyTheme());
+applyTheme();
+
 function toggleHeat() {
   S.heat = !S.heat;
   localStorage.setItem('lucidly.heat', S.heat ? '1' : '0');
@@ -2908,6 +2940,7 @@ document.addEventListener('click', (e) => {
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
   if (on('[data-pin]')) return togglePin();
   if (on('#heatBtn')) return toggleHeat();
+  if (on('#themeBtn')) return cycleTheme();
   if ((el = on('[data-fz]'))) return zoomFlow(Number(el.dataset.fz));
   if (on('[data-fsel]')) {
     S.fselOpen = !S.fselOpen;
