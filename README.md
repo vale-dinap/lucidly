@@ -4,7 +4,7 @@
 
 *See what your AI agent is doing, at a glance.*
 
-<!-- video: vid_00_Hero_Watch-the-agent-work.mp4 -->
+https://github.com/user-attachments/assets/1d562889-780d-4b70-88e7-e21bc5538e40
 
 ## Quick start
 
@@ -54,19 +54,19 @@ All of these show a made-up demo session (`scripts/demo-session.mjs`).
 
 **Drill down.** Open a step in place to see each of its actions, hover one for what it did, and click it for its full output.
 
-<!-- video: vid_01_Drill-down.mp4 -->
+https://github.com/user-attachments/assets/0f0e3775-8f9b-4972-aa48-387297197bd5
 
 **Where did the tokens go?** Token heat makes every task and step glow from green to red by the tokens it used, relative to the rest of the run.
 
-<!-- video: vid_02_Where-did-the-tokens-go.mp4 -->
+https://github.com/user-attachments/assets/e7d25161-a8f8-4151-b1ad-374283542b42
 
 **What changed.** Every file the agent edited, with the diff of each change, by file or in time order.
 
-<!-- video: vid_03_What-changed.mp4 -->
+https://github.com/user-attachments/assets/f6a688a2-c719-48b6-a2c6-21f4e9ca47a3
 
 **Every action, filterable.** The full history of commands, edits, reads and subagent calls: filter by kind, failures or task, search, and open any of them.
 
-<!-- video: vid_04_Full-history-of-actions-with-filters.mp4 -->
+https://github.com/user-attachments/assets/14139ec0-dd82-4bbd-9a37-cf78147dce83
 
 **The detailed view**, with a task open: its steps, the models that worked on them and their tokens, the files and commands involved, and a subagent's work.
 
