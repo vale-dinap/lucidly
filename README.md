@@ -101,4 +101,4 @@ Lucidly is a viewer, not a controller. It does not send commands to the agent, a
 
 ## License
 
-Lucidly is licensed under the [Apache License 2.0](LICENSE).
+Copyright 2026 Valerio Di Napoli. Lucidly is licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE).
