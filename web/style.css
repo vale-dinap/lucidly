@@ -822,7 +822,7 @@ pre .dh { color: var(--faint); font-weight: 600; }
 /* ───────── keep awake */
 .wake-wrap { position: relative; margin-left: 4px; }
 .wake { color: var(--faint); }
-.wake svg { width: 17px; height: 17px; }
+.wake svg { width: 20px; height: 20px; stroke-width: 1.7; }
 .wake .steam { opacity: 0; transition: opacity 0.3s; }
 .wake[data-wake='awake'] { color: var(--accent); }
 .wake[data-wake='awake'] .steam { opacity: 1; animation: steam 2.4s ease-in-out infinite; }
