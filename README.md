@@ -46,7 +46,15 @@ The first target for development and testing is Claude Code, whose detailed stre
 
 ## Getting started
 
-Requires Node.js 22.18 or newer (it runs the TypeScript sources directly; there is no build step).
+Requires Node.js 22.18 or newer. Install the `lucidly` command from npm:
+
+```sh
+npm install -g @vale-dinap/lucidly
+```
+
+or try it without installing: `npx @vale-dinap/lucidly`.
+
+To run it from a clone instead (Node runs the TypeScript sources directly, no build needed):
 
 ```sh
 npm install          # dev tools only (TypeScript for type checking); no runtime dependencies
@@ -95,6 +103,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works inside.
 ```sh
 npm test             # unit + integration tests (node:test)
 npm run typecheck    # tsc --noEmit
+npm run build        # compiles src/ to dist/ (runs by itself on npm pack / npm publish)
 ```
 
 ## What Lucidly is not

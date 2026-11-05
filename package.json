@@ -1,7 +1,29 @@
 {
-  "name": "lucidly",
+  "name": "@vale-dinap/lucidly",
   "version": "0.1.0",
   "description": "See what your AI agent is doing, at a glance.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "agent",
+    "coding-agent",
+    "transcript",
+    "viewer",
+    "visualization",
+    "observability",
+    "cli"
+  ],
+  "homepage": "https://github.com/vale-dinap/lucidly#readme",
+  "bugs": {
+    "url": "https://github.com/vale-dinap/lucidly/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vale-dinap/lucidly.git"
+  },
+  "author": "Valerio Di Napoli",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "lucidly": "bin/lucidly.js"
@@ -20,8 +42,6 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
   },
-  "author": "Valerio Di Napoli",
-  "license": "Apache-2.0",
   "files": [
     "bin/",
     "dist/",
