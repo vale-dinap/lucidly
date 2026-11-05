@@ -12,8 +12,9 @@
  *
  * Nothing in it is real: names, paths, code and output are invented. Lucidly shows a session as
  * still working for 5 minutes after its last record, so generate it right before shooting.
+ * Running it again rewrites the files in place: restart Lucidly to see the new run.
  */
-import { mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -406,11 +407,12 @@ tool('Bash', { command: 'npm test -- --run shoppingList', description: 'Run the 
 const END = t;
 
 // ───────────────────────────── writing it out
-rmSync(DIR, { recursive: true, force: true });
+// The files are emptied and written again in place, never deleted: on Windows a folder that a
+// viewer (or Explorer) still has open cannot be removed, so a rerun would fail.
 const subDir = join(DIR, SESSION, 'subagents');
 mkdirSync(subDir, { recursive: true });
 const pathOf = (file) => (file === 'main' ? join(DIR, `${SESSION}.jsonl`) : join(subDir, `agent-${file}.jsonl`));
-writeFileSync(pathOf('main'), '');
+for (const file of new Set(out.map((o) => o.file))) writeFileSync(pathOf(file), '');
 writeFileSync(join(subDir, `agent-${A}.meta.json`), JSON.stringify({ toolUseId: agentCall, agentType: 'Explore' }));
 const titleRec = { type: 'ai-title', aiTitle: 'Pantry: dark mode, CSV export, accessibility, offline mode', sessionId: SESSION };
 out.sort((a, b) => a.t - b.t);
