@@ -4,6 +4,8 @@
 
 *See what your AI agent is doing, at a glance.*
 
+<!-- video: vid_00_Hero_Watch-the-agent-work.mp4 -->
+
 ## Quick start
 
 From a project folder where you use Claude Code (Node.js 22.18 or newer):
@@ -45,6 +47,38 @@ Every item in the view, whether a planned step, a subtask or a blocker, is linke
 **Persistent history.** All steps and their output are kept, so the user can review any part of a run without hunting through a scrollback buffer.
 
 **Agent-agnostic design.** Lucidly works by reading agent output, not by depending on a specific agent's internals. Support for different agents and frameworks is meant to be added through lightweight adapters that teach Lucidly how to recognize each one's output.
+
+## See it in action
+
+All of these show a made-up demo session (`scripts/demo-session.mjs`).
+
+**Drill down.** Open a step in place to see each of its actions, hover one for what it did, and click it for its full output.
+
+<!-- video: vid_01_Drill-down.mp4 -->
+
+**Where did the tokens go?** Token heat makes every task and step glow from green to red by the tokens it used, relative to the rest of the run.
+
+<!-- video: vid_02_Where-did-the-tokens-go.mp4 -->
+
+**What changed.** Every file the agent edited, with the diff of each change, by file or in time order.
+
+<!-- video: vid_03_What-changed.mp4 -->
+
+**Every action, filterable.** The full history of commands, edits, reads and subagent calls: filter by kind, failures or task, search, and open any of them.
+
+<!-- video: vid_04_Full-history-of-actions-with-filters.mp4 -->
+
+**The detailed view**, with a task open: its steps, the models that worked on them and their tokens, the files and commands involved, and a subagent's work.
+
+![The detailed view, with a task open: steps, models and tokens, files and commands, a subagent and the latest actions](docs/media/img_01_detailed-view-with-the-audit-task-open.png)
+
+**Token usage**, from the meter in the top bar: input, output, cache reads and the current context, per model, and tokens per minute over the last hour.
+
+![The token usage breakdown: totals, a table per model and tokens per minute](docs/media/img_02_the-token-popover-from-the-top-bar.png)
+
+**Light or dark**, following the system, or chosen in the top bar.
+
+![The simple view in the light theme](docs/media/img_03_light-theme.png)
 
 ## Intended use
 
