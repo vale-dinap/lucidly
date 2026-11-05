@@ -911,3 +911,14 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* ───────── instant tooltips (timeline) */
 .tip { position: fixed; left: 0; top: 0; z-index: 60; max-width: 360px; padding: 6px 9px; border-radius: 7px; background: var(--text); color: var(--bg); font-size: 11.5px; line-height: 1.4; white-space: pre-line; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+
+/* ───────── token heat: a glow around tasks and steps, green (few tokens) to red (most) */
+.heat-btn { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--r); color: var(--faint); }
+.heat-btn.on { color: #f5772e; border-color: color-mix(in srgb, #f5772e 55%, var(--border)); background: color-mix(in srgb, #f5772e 12%, var(--surface)); }
+.heat-btn.on svg { fill: color-mix(in srgb, #f5772e 35%, transparent); }
+.heat-on [style*='--heat'] { --glow: color-mix(in srgb, var(--heat) calc(var(--heat-a) * 100%), transparent); }
+.heat-on .fg-n[style*='--heat'], .heat-on .tstat[style*='--heat'] { box-shadow: 0 0 0 2px var(--glow), 0 0 10px 2px var(--glow); }
+/* step dots: the dot is the ::before; a running step keeps its own pulsing ring */
+.heat-on .step:not(.s-active) > .step-h .mk[style*='--heat']::before { box-shadow: 0 0 0 2px var(--glow), 0 0 8px 2px var(--glow); }
+.heat-on .fn-s[style*='--heat'] .shp { filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 7px var(--glow)); }
+.heat-on .fg-n, .heat-on .tstat, .heat-on .mk::before, .heat-on .fn-s .shp { transition: box-shadow 0.35s, filter 0.35s; }

@@ -38,6 +38,8 @@ const S = {
   layout: ['detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'simple',
   // Keep the overview (stats and timeline) on screen while scrolling.
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
+  // Token heat: a green-to-red glow around tasks and steps by how many tokens they used.
+  heat: localStorage.getItem('lucidly.heat') === '1',
   // path view
   openGoals: new Set(),
   closedGoals: new Set(),
@@ -308,6 +310,45 @@ function mdList(items) {
       .join('')}</${list.tag}>`;
   return root.lists.map(render).join('');
 }
+
+// ───────────────────────────── token heat
+/** Tokens a unit used, the way the meter counts them: fresh input, cache writes and output. */
+const unitTokens = (n) => (n?.usage ? n.usage.input + n.usage.cacheWrite + n.usage.output : 0);
+
+/**
+ * Each task and step's place on a green-to-red scale, relative to the others of its kind in this
+ * run. Log scale: token use is lopsided, and on a linear one a single huge step would leave
+ * everything else green. Tasks and steps are ranked apart (a task's total includes its steps).
+ */
+function computeHeat() {
+  const heat = new Map();
+  if (!S.heat || !S.run) return heat;
+  const goals = S.run.goals.map(N).filter(Boolean);
+  const rank = (nodes) => {
+    const xs = nodes.map((n) => [n, unitTokens(n)]).filter(([, t]) => t > 0);
+    if (!xs.length) return;
+    const logs = xs.map(([, t]) => Math.log(t)).sort((a, b) => a - b);
+    const lo = logs[Math.floor(logs.length * 0.05)];
+    const hi = logs[logs.length - 1];
+    for (const [n, t] of xs) heat.set(n.id, { v: hi - lo < 1e-6 ? 0.5 : Math.max(0, Math.min(1, (Math.log(t) - lo) / (hi - lo))), t });
+  };
+  rank(goals); // questions too: they are ranked with the tasks
+  rank(goals.flatMap((g) => kids(g).filter((c) => c.type === 'step')));
+  return heat;
+}
+
+/** Inline style for a glowing element: its colour from green (few tokens) to red (most). */
+function heatStyle(id) {
+  const h = S.heatMap?.get(id);
+  if (!h) return '';
+  const hue = Math.round(120 * (1 - h.v));
+  return ` style="--heat:hsl(${hue} 85% 52%);--heat-a:${(0.35 + 0.55 * h.v).toFixed(2)}"`;
+}
+const heatTip = (id) => {
+  const h = S.heatMap?.get(id);
+  const u = N(id)?.usage;
+  return h && u ? `\n${tok(h.t)} tokens (${tok(freshIn(u))} in · ${tok(u.output)} out)${u.cacheRead ? ` · ${tok(u.cacheRead)} cached` : ''}` : '';
+};
 
 // ───────────────────────────── derived info
 const idNum = (id) => Number(String(id).slice(1));
@@ -1079,7 +1120,7 @@ function stepHtml(s) {
   return `<li class="${cls}">
     <div class="step-h${s.untracked ? ' untracked' : ''}" data-step="${s.id}" data-node="${s.id}" title="${esc(s.untracked ? `${s.title}
 Done together with the other steps: the agent's work on it wasn't told apart.` : s.title)}">
-      <span class="mk"></span><span class="st-title">${hl(s.title)}</span>
+      <span class="mk"${heatStyle(s.id)}${S.heat ? ` title="${esc(heatTip(s.id).trim())}"` : ''}></span><span class="st-title">${hl(s.title)}</span>
       <span class="flags">${s.untracked ? '<span class="flag untr">with the others</span>' : ''}${flags}</span><span class="st-count" title="${plural(a, 'action')}">${a || ''}</span>
       ${hasBody ? CHEV : '<span style="width:16px"></span>'}
     </div>${body}</li>`;
@@ -1144,7 +1185,7 @@ function taskHtml(g, q) {
   const cur = g.id === S.run.currentGoal;
   const sel = S.selected === g.id ? ' sel' : '';
   const head = `<div class="task-h" data-toggle="${g.id}" data-node="${g.id}">
-      <span class="tstat${qa ? ' qa' : ''} s-${g.status}"></span>
+      <span class="tstat${qa ? ' qa' : ''} s-${g.status}"${heatStyle(g.id)}${S.heat ? ` title="${esc(heatTip(g.id).trim())}"` : ''}></span>
       <div class="task-main"><div class="task-title">${hl(g.title)}</div><div class="task-meta">${meta}</div>${answer}</div>
       ${segbarHtml(steps)}${CHEV}
     </div>`;
@@ -1237,7 +1278,7 @@ function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
     key,
     st,
     cls: `fn k-${kind} st-${st}${sel}${extra}`,
-    html: `<i class="fl"></i><button type="button" class="fn-s" data-fnode="${id}" data-node="${key.startsWith('s:') ? id : ''}" title="${esc(tip)}" aria-label="${esc(tip)}"><svg class="shp" viewBox="0 0 36 36" aria-hidden="true">${SHAPE[kind]}</svg>${glyphSvg(kind)}${badge}</button><span class="fn-l">${esc(label)}</span>`,
+    html: `<i class="fl"></i><button type="button" class="fn-s" data-fnode="${id}" data-node="${key.startsWith('s:') ? id : ''}" title="${esc(tip + (key.startsWith('s:') || key.startsWith('w:') ? heatTip(id) : ''))}" aria-label="${esc(tip)}"${key.startsWith('s:') || key.startsWith('w:') ? heatStyle(id) : ''}><svg class="shp" viewBox="0 0 36 36" aria-hidden="true">${SHAPE[kind]}</svg>${glyphSvg(kind)}${badge}</button><span class="fn-l">${esc(label)}</span>`,
   };
 }
 
@@ -1347,7 +1388,7 @@ function flowGoalHead(g, qa) {
       ].filter(Boolean).join('<i>·</i>');
   return {
     st,
-    html: `<span class="fg-n st-${st}">${glyph}${un ? '<span class="fn-b bad">!</span>' : ''}</span>
+    html: `<span class="fg-n st-${st}"${heatStyle(g.id)}${S.heat ? ` title="${esc(heatTip(g.id).trim())}"` : ''}>${glyph}${un ? '<span class="fn-b bad">!</span>' : ''}</span>
       <span class="fg-t"><span class="fg-title">${hl(g.title)}</span><span class="fg-meta">${meta}</span></span>
       ${qa ? '' : CHEV}`,
   };
@@ -1511,6 +1552,11 @@ function renderPath() {
       ? `${S.pf.hideChat ? 'Hiding' : 'Hide'} ${plural(nQA, 'question')} answered without any work`
       : 'No questions answered without work in this run yet: nothing to hide for now';
   setExpandBtn(files ? S.ff.open.size > 0 : S.expandAll);
+  const hb = $('#heatBtn');
+  hb.hidden = files;
+  hb.classList.toggle('on', S.heat);
+  hb.setAttribute('aria-pressed', String(S.heat));
+  hb.title = S.heat ? 'Token heat on: tasks and steps glow green to red by tokens used, relative to the rest of the run (H)' : 'Token heat: make tasks and steps glow green to red by tokens used (H)';
   $('#pathSearch').placeholder = files ? 'Filter files and edits' : 'Search steps, files, commands';
   requestAnimationFrame(fitToolbar);
   if (files) {
@@ -2343,6 +2389,8 @@ function render() {
     $('#pane').scrollTop = 0;
   }
   if (S.selected && !N(S.selected)) S.selected = null;
+  S.heatMap = computeHeat();
+  $('#pane').classList.toggle('heat-on', S.heat);
   renderHeader();
   const has = !!S.run;
   const pane = $('#pane');
@@ -2583,6 +2631,12 @@ function toggleTokens(show = $('#tokensPop').hidden) {
   renderTokens();
 }
 
+function toggleHeat() {
+  S.heat = !S.heat;
+  localStorage.setItem('lucidly.heat', S.heat ? '1' : '0');
+  schedule();
+}
+
 function togglePin() {
   S.pinOv = !S.pinOv;
   localStorage.setItem('lucidly.pinOverview', S.pinOv ? '1' : '0');
@@ -2643,6 +2697,7 @@ document.addEventListener('click', (e) => {
   if (on('#emptyOpen')) return void openPicker();
   if ((el = on('[data-view]'))) return setView(el.dataset.view);
   if (on('[data-pin]')) return togglePin();
+  if (on('#heatBtn')) return toggleHeat();
   if (on('[data-fsel]')) {
     S.fselOpen = !S.fselOpen;
     return schedule();
@@ -3064,6 +3119,7 @@ document.addEventListener('keydown', (e) => {
     $(S.view === 'path' ? '#pathSearch' : '#actionsSearch').focus();
   } else if (e.key === 'o') openPicker();
   else if (e.key === 'p' && S.run) togglePin();
+  else if (e.key === 'h' && S.run && S.view === 'path') toggleHeat();
   else if (e.key === 't' && S.run?.usage) toggleTokens();
   else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
   else if (e.key === 'Escape' && !$('#wakePop').hidden) toggleWake(false);
