@@ -16,6 +16,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 - **Files changed by shell commands are now edits**, not plain commands: `sed -i`, redirections and heredocs, `tee`, `cp`/`mv`/`rm`, PowerShell's `Set-Content` and the like, and scripts that write files. They read "Edit app.js, README.md (by command)" (or Delete, Rename, Move), count with the edits, appear in the Files view and keep their command line, which shows where a diff would be.
 
 - **A task continued by your reply shows where each round ended.** When you answer after the agent finished ("yes, go with the first"), the chain no longer files your reply inside an earlier step and loses the first result: the end node stays as an intermediate goal (a smaller diamond: done, asked, or interrupted, with that round's result), your reply follows it, then the new steps and the final goal. The Detailed view shows the same.
+- **Every message of yours has its own place.** One sent while the agent worked was filed inside a step; it is now a node in the Simple view and a row in the Detailed view, between the steps before and after it. In the details panel your messages are outlined in the accent colour.
 - **A message after `/compact` is no longer mistaken for one sent mid-turn**, which used to fold it into the previous task.
 
 ### Changed

@@ -404,6 +404,9 @@ mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inhe
 .ev-text code { background: var(--sunken); padding: 1px 4px; border-radius: 4px; }
 .ev-text pre { background: var(--code); padding: 8px 10px; border-radius: var(--r-sm); overflow-x: auto; }
 .ev-prompt { background: var(--sunken); border-radius: var(--r); padding: 9px 12px; white-space: pre-wrap; }
+/* Your own messages stand out from everything the agent did: tinted, outlined, with an accent bar. */
+.ev-prompt.you { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-left: 3px solid var(--accent); }
+.ev-prompt.you .who { color: var(--accent); }
 .who { display: block; font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; }
 .ev-outcome { border-left: 2px solid var(--done); padding-left: 12px; }
 .ev-outcome .who { color: var(--done); }

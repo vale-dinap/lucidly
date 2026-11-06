@@ -194,7 +194,7 @@ test('short replies continue the goal; substantive prompts open a new one', () =
   assert.equal(goal(e, 1).status, 'active');
 });
 
-test('a message sent mid-turn is an interjection in the current step, not a new task', () => {
+test('a message sent mid-turn continues the task, as a node of its own between steps', () => {
   const e = new Engine();
   const a = tool('$ npm run build');
   e.applyAll([
@@ -207,9 +207,11 @@ test('a message sent mid-turn is an interjection in the current step, not a new 
     { type: 'turn.end' },
   ]);
   assert.equal(e.run.goals.length, 1);
-  const step = children(e, goal(e).id, 'step')[0];
-  const note = children(e, step.id, 'activity').find((n) => n.kind === 'user');
-  assert.match(note!.title, /^You: the session is currently open/);
+  const kids = goal(e).children.map((id) => e.snapshot().nodes[id]);
+  assert.deepEqual(kids.map((n) => n.type), ['step', 'activity']);
+  assert.match(kids[1].title, /^You: the session is currently open/);
+  assert.equal(kids[1].round, undefined, 'no round: the turn had not ended');
+  assert.equal(kids[0].status, 'done');
   // once the turn has ended, a substantive message does start a new task
   e.apply(prompt('Now add keyboard shortcuts to the actions view'));
   assert.equal(e.run.goals.length, 2);
@@ -437,4 +439,28 @@ test('a message mid-turn and /compact do not start a round; after /compact the t
   // A substantive message after /compact is a new task, not an interjection.
   e.apply(prompt('someone asked whether Lucidly streams the log as it runs'));
   assert.equal(e.run.goals.length, 2);
+});
+
+test('work after a mid-turn message goes into a new step, unless a plan step is under way', () => {
+  const e = new Engine();
+  const a = tool('$ npm run build');
+  const b = tool('$ npm test');
+  e.applyAll([prompt('Build the project and then run the whole test suite'), text('Building first.'), a, end(a), prompt('also run the tests please'), b, end(b)]);
+  const kids = goal(e).children.map((id) => e.snapshot().nodes[id]);
+  assert.deepEqual(kids.map((n) => n.type), ['step', 'activity', 'step']);
+  const p = new Engine();
+  const c = tool('$ step one');
+  const d = tool('$ more of step one');
+  p.applyAll([
+    prompt('Do the three things on the list in order please'),
+    { type: 'plan.set', source: 'TodoWrite', replace: true, items: [{ title: 'One', status: 'in_progress' }, { title: 'Two', status: 'pending' }] },
+    c,
+    end(c),
+    prompt('take your time'),
+    d,
+    end(d),
+  ]);
+  const pk = goal(p).children.map((id) => p.snapshot().nodes[id]);
+  assert.deepEqual(pk.map((n) => (n.type === 'step' ? n.title : n.kind)), ['One', 'user', 'Two']);
+  assert.equal(pk[0].children.length, 2, 'the plan step under way keeps its work');
 });

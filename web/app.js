@@ -1110,8 +1110,8 @@ function childrenHtml(n) {
   };
   if (hide) out.push(`<button class="mini-more" data-allacts="${n.id}">Show ${plural(hide, 'earlier action')}</button>`);
   for (const c of kids(n)) {
-    // Steps have their own list; a reply that started a round sits between them (see taskHtml).
-    if (c.type === 'step' || c.round) continue;
+    // Steps have their own list, and your messages on a task sit between them (see stepRows).
+    if (c.type === 'step' || (n.type === 'goal' && c.kind === 'user')) continue;
     if (isAct(c)) {
       if (!hidden.has(c.id)) mini.push(miniRow(c));
       continue;
@@ -1196,11 +1196,14 @@ function stepRows(g, shown) {
   for (const c of kids(g)) {
     if (c.type === 'step') {
       if (show.has(c.id)) out.push(stepHtml(c));
-    } else if (c.round && !filtering()) {
+    } else if (c.kind === 'user' && !filtering()) {
       const r = c.round;
-      const head = r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now';
-      out.push(`<li class="finish round${r.interrupted || r.asked ? '' : ' reached'}" data-select="${g.id}"><span class="mk"></span><div class="ft"><small>${head}</small>${esc(clip(r.outcome ?? '', 360))}</div></li>`);
-      out.push(`<li class="round-reply${S.selected === c.id ? ' sel' : ''}" data-select="${c.id}" data-node="${c.id}"><span class="mk">${icon('user')}</span><div class="rr-t"><small>You replied</small>${hl(c.title.replace(/^You: /, ''))}</div></li>`);
+      if (r) {
+        const head = r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now';
+        out.push(`<li class="finish round${r.interrupted || r.asked ? '' : ' reached'}" data-select="${g.id}"><span class="mk"></span><div class="ft"><small>${head}</small>${esc(clip(r.outcome ?? '', 360))}</div></li>`);
+      }
+      const who = r ? 'You replied' : 'You wrote, while the agent worked';
+      out.push(`<li class="round-reply${S.selected === c.id ? ' sel' : ''}" data-select="${c.id}" data-node="${c.id}"><span class="mk">${icon('user')}</span><div class="rr-t"><small>${who}</small>${hl(c.title.replace(/^You: /, ''))}</div></li>`);
     }
   }
   return out.join('');
@@ -1370,13 +1373,24 @@ function chainItems(g, q) {
     const tip = `${r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now'}${r.outcome ? `: ${clip(r.outcome, 400)}` : ''}\nThe task went on after your reply.`;
     return flowNode({ key: `end:${round}`, id: g.id, kind: r.interrupted ? 'mid-wait' : r.asked ? 'mid-ask' : 'mid', st: r.interrupted ? 'wait' : 'done', label, tip, extra: ' mid' });
   };
+  // Every message of yours is a node: a reply that continued the task, or one sent while it worked.
   const replyNode = (c) =>
-    flowNode({ key: `u:${c.id}`, id: c.id, kind: 'start', st: 'start', label: 'Reply', tip: `You replied (${clock(c.startedAt)}): ${clip(c.title.replace(/^You: /, ''), 300)}`, extra: ' reply' });
+    flowNode({
+      key: `u:${c.id}`,
+      id: c.id,
+      kind: 'start',
+      st: 'start',
+      label: c.round ? 'Reply' : 'Message',
+      tip: `${c.round ? 'You replied' : 'You wrote, while the agent worked'} (${clock(c.startedAt)}): ${clip(c.title.replace(/^You: /, ''), 300)}`,
+      extra: ' reply',
+    });
   let i = 0;
   for (const c of kids(g)) {
-    if (c.kind === 'user' && c.round) {
-      items.push(roundEnd(c.round, false));
-      round++;
+    if (c.kind === 'user') {
+      if (c.round) {
+        items.push(roundEnd(c.round, false));
+        round++;
+      }
       items.push(replyNode(c));
       continue;
     }
@@ -2309,7 +2323,10 @@ function transcriptHtml(rootId, chunks) {
     }
     switch (c.kind) {
       case 'prompt':
-        out.push(`<div class="ev ev-prompt"><span class="who">${esc(c.label === 'Task given to subagent' ? 'Task for subagent' : 'You')}</span>${esc(c.text)}</div>`);
+        {
+          const sub = c.label === 'Task given to subagent';
+          out.push(`<div class="ev ev-prompt${sub ? '' : ' you'}"><span class="who">${sub ? 'Task for subagent' : 'You'}</span>${esc(c.text)}</div>`);
+        }
         break;
       case 'text':
         out.push(`<div class="ev ev-text">${md(c.text)}</div>`);

@@ -498,8 +498,8 @@ export class Engine {
       return;
     }
     if (!midTurn && !housekeeping) return this.startRound(cur, text, ts, raw);
-    // Sent while the agent works (or a housekeeping command): a note in the current step.
-    if (!housekeeping) this.setStatus(cur.id, 'active', ts);
+    if (!housekeeping) return this.interject(cur, text, ts, raw);
+    // A housekeeping command (/compact...) is a note where the task stands, not a message to the agent.
     const target = cur.unit ?? cur.current ?? cur.id;
     const n = this.newNode('activity', target, `You: ${truncate(text, 80)}`, { kind: 'user', status: 'done', startedAt: ts });
     this.addChunk(n.id, 'prompt', raw ?? text, ts, 'User reply');
@@ -525,7 +525,34 @@ export class Engine {
     g.pending = null;
     g.lastTextChunk = null;
     g.interrupted = false;
-    const n = this.newNode('activity', g.id, `You: ${truncate(text, 80)}`, { kind: 'user', status: 'done', startedAt: ts, round });
+    this.userNode(g, text, ts, raw, { round });
+    delete goal.outcome;
+    this.setStatus(g.id, 'active', ts);
+  }
+
+  /**
+   * A message sent while the agent works: like every message of yours, a node of its own on the
+   * task, after the steps so far. The work that follows goes into a new step, except that a plan
+   * step under way stays the current one until the plan moves on.
+   */
+  private interject(g: GoalCtx, text: string, ts?: string, raw?: string): void {
+    this.closeSubtask(g, ts);
+    const step = g.current ? this.nodes.get(g.current) : undefined;
+    if (step && step.origin !== 'plan') {
+      if (step.status === 'active') this.setStatus(step.id, 'done', ts);
+      g.current = null;
+      g.unit = null;
+    }
+    g.pending = null;
+    g.lastTextChunk = null;
+    this.userNode(g, text, ts, raw, {});
+    this.setStatus(g.id, 'active', ts);
+  }
+
+  /** A message of yours on the task itself: after the steps so far, before a plan's steps not started. */
+  private userNode(g: GoalCtx, text: string, ts: string | undefined, raw: string | undefined, extra: Partial<ViewNode>): void {
+    const goal = this.touch(g.id)!;
+    const n = this.newNode('activity', g.id, `You: ${truncate(text, 80)}`, { kind: 'user', status: 'done', startedAt: ts, ...extra });
     const rest = goal.children.filter((c) => c !== n.id);
     let at = rest.length;
     while (at > 0) {
@@ -536,8 +563,6 @@ export class Engine {
     rest.splice(at, 0, n.id);
     goal.children = rest;
     this.addChunk(n.id, 'prompt', raw ?? text, ts, 'User reply');
-    delete goal.outcome;
-    this.setStatus(g.id, 'active', ts);
   }
 
   // ───────────────────────────── narration
