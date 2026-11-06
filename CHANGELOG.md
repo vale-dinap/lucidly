@@ -17,6 +17,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 ### Changed
 
 - **The Files view's History lists the newest change first.**
+- **The Files view no longer flags recovered failures in red.** A file only shows the failed edits nothing has made up for. Recovered ones are left to their own rows, where they read "failed → recovered" in grey, here and in the other views.
 - **`lucidly` no longer guesses which session to open.** It opens the folder's session when there's no doubt (the only one, or the only one in progress) and otherwise starts on the session list.
 
 ## [0.2.0] - 2026-11-05

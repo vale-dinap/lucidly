@@ -576,7 +576,8 @@ function fileEdits() {
       let e = map.get(id);
       if (!e) map.set(id, (e = { key, path, inside: !isAbsPath(key), edits: [], add: 0, del: 0, failed: 0, last: '' }));
       e.edits.push(r);
-      if (r.status === 'failed') e.failed++;
+      // Only failures nothing has made up for: recovered ones show on their own rows, not on the file.
+      if (isUnresolved(r)) e.failed++;
       else if (r.diff) {
         e.add += r.diff.add;
         e.del += r.diff.del;
@@ -701,8 +702,7 @@ function filesHtml(q) {
         <span class="chev">${CHEV}</span>
         <span class="fpath"><span class="fdir">${hl(dir)}</span><b>${hl(base)}</b></span>
         ${created ? '<span class="ftag" title="The first change was a full write: probably created in this run">written</span>' : ''}
-        ${f.failed ? `<span class="ftag bad" title="${plural(f.failed, 'edit')} failed to apply">${f.failed} failed</span>` : ''}
-        <span class="grow"></span>
+        ${f.failed ? `<span class="ftag bad" title="${plural(f.failed, 'edit')} failed, with nothing succeeding after in the same step">${f.failed} failed</span>` : ''}        <span class="grow"></span>
         ${fileSpark(f, index, total)}
         <span class="fcount">${plural(f.edits.length, 'edit')}</span>
         <span class="fdiff">${diffBadge(f.del, f.add)}</span>
@@ -2345,7 +2345,7 @@ function diffBadge(del, add) {
 function failBadge(n) {
   if (n.status !== 'failed') return '';
   return n.recovered
-    ? '<span class="fb rec" title="Something succeeded after this, in the same step">recovered</span>'
+    ? '<span class="fb rec" title="This failed, then something succeeded after it, in the same step">failed → recovered</span>'
     : '<span class="fb open" title="Nothing has succeeded after this in its step yet">failed</span>';
 }
 
