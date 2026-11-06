@@ -104,6 +104,8 @@ export class ClaudeCodeAdapter implements Adapter {
   /** The working folder as of the latest record, and the files seen so far: for shell edits. */
   private cwd?: string;
   private known = new KnownFiles();
+  /** A turn.end was emitted and nothing has happened since: a later turn_duration adds nothing. */
+  private turnEnded = false;
 
   /** @param scope set for subagent transcripts: the callId of the spawning Agent call. */
   private readonly scope?: string;
@@ -145,7 +147,10 @@ export class ClaudeCodeAdapter implements Adapter {
         if (!this.scope && (rec.aiTitle || rec.summary)) emit({ type: 'run.meta', title: rec.aiTitle ?? rec.summary });
         break;
       case 'user':
-        if (!rec.isSidechain || this.scope) this.onUser(rec, emit);
+        if (!rec.isSidechain || this.scope) {
+          this.turnEnded = false;
+          this.onUser(rec, emit);
+        }
         break;
       case 'queue-operation':
         // Background work finishing is queued for the agent as a task notification.
@@ -155,6 +160,16 @@ export class ClaudeCodeAdapter implements Adapter {
         if (!rec.isSidechain || this.scope) {
           this.onAssistant(rec, emit);
           this.noteUsage(rec);
+          // The agent's final words end its turn, without waiting for turn_duration: Claude Code
+          // doesn't write one for every turn (not after a background task's notification). A
+          // final message comes in several records (thinking, then text) that all say end_turn:
+          // the turn ends with the one holding its text.
+          const m = rec.message;
+          if (!this.scope && m?.stop_reason === 'end_turn' && Array.isArray(m.content) && m.content.some((b: { type?: string }) => b.type === 'text')) {
+            out.push(...this.flush());
+            emit({ type: 'turn.end' });
+            this.turnEnded = true;
+          } else this.turnEnded = false;
         }
         break;
       case 'system':
@@ -163,7 +178,8 @@ export class ClaudeCodeAdapter implements Adapter {
       case 'result':
         // stream-json end of a run
         if (rec.is_error) emit({ type: 'notice', level: 'error', text: `Run ended with an error (${rec.subtype ?? 'error'})`, raw: rec.result });
-        emit({ type: 'turn.end' });
+        if (!this.turnEnded) emit({ type: 'turn.end' });
+        this.turnEnded = true;
         break;
     }
     return out;
@@ -340,7 +356,8 @@ export class ClaudeCodeAdapter implements Adapter {
     const content = typeof rec.content === 'string' ? rec.content : '';
     // (stream-json's `init` record is covered by the generic first-record run.meta in push())
     if (sub === 'turn_duration') {
-      emit({ type: 'turn.end' });
+      if (!this.turnEnded) emit({ type: 'turn.end' });
+      this.turnEnded = true;
     } else if (sub === 'compact_boundary') {
       emit({ type: 'notice', level: 'info', text: 'Context compacted' });
     } else if (sub.startsWith('model_refusal') || sub === 'refusal') {

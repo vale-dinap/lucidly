@@ -295,3 +295,21 @@ test('a background subagent stays running until its task notification arrives', 
   assert.equal(agent().status, 'done');
   assert.equal(agent().endedAt, '2026-11-04T10:00:30Z');
 });
+
+test("a turn ends with the agent's final message, even without turn_duration, and only once", () => {
+  const rec = (type: string, extra: Record<string, unknown>, i: number) => ({ type, uuid: `u${i}`, timestamp: `2026-11-06T10:00:0${i}Z`, sessionId: 's', cwd: '/w', ...extra });
+  const say = (content: unknown[], stop: string | null, i: number, id = 'm1') => rec('assistant', { message: { id, role: 'assistant', content, stop_reason: stop } }, i);
+  const run = (records: object[]) => {
+    const a = new ClaudeCodeAdapter();
+    return records.flatMap((r) => a.push(r)).concat(a.flush());
+  };
+  const prompt = rec('user', { message: { role: 'user', content: 'Explain what the build script does please' } }, 0);
+  // A final message split in two records: the turn ends after the text, not after the thinking.
+  const evs = run([prompt, say([{ type: 'thinking', thinking: 'hm' }], 'end_turn', 1), say([{ type: 'text', text: 'It bundles the app.' }], 'end_turn', 2)]);
+  const types = evs.map((e) => e.type);
+  assert.equal(types.filter((t) => t === 'turn.end').length, 1);
+  assert.ok(types.indexOf('agent.text') < types.indexOf('turn.end'));
+  // turn_duration right after adds no second end; the next turn's still counts.
+  const more = run([prompt, say([{ type: 'text', text: 'Done.' }], 'end_turn', 1), rec('system', { subtype: 'turn_duration' }, 2), rec('user', { message: { role: 'user', content: 'And now run the full test suite' } }, 3), say([{ type: 'text', text: 'All green.' }], null, 4, 'm2'), rec('system', { subtype: 'turn_duration' }, 5)]);
+  assert.equal(more.filter((e) => e.type === 'turn.end').length, 2);
+});

@@ -29,7 +29,7 @@ parent `Agent` tool call. The `.meta.json` is only written when the subagent fin
 - **resumable**: past sessions can be opened after the fact, because the file is the history.
 
 Records that matter: `user` (prompts, tool results), `assistant` (text, thinking, tool_use),
-`system` (`turn_duration` = turn ended, `compact_boundary`, `informational`, refusals),
+`system` (`turn_duration` = turn ended, `compact_boundary`, `informational`, refusals; the turn also ends with the agent's final message, `stop_reason: end_turn` on the record holding its text, since Claude Code doesn't write `turn_duration` after every turn, and only one `turn.end` is emitted per turn),
 `ai-title`. All others (`api-request*`, `attachment`, snapshots…) are ignored.
 
 **Other input routes:**
