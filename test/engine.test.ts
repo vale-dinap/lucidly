@@ -377,3 +377,64 @@ test('after a turn, a short status update is a new task; an approval or an answe
   assert.equal(e.run.goals.length, 2, 'a status update is a new task');
   assert.equal(goal(e, 0).status, 'done');
 });
+
+test('a reply after the turn ended starts a new round of the task', () => {
+  const e = new Engine();
+  const a = tool('Read engine.ts', { kind: 'read', tool: 'Read' });
+  const b = tool('$ npm test');
+  e.applyAll([
+    prompt('Look into why some edits are shown as commands'),
+    text('Let me look at the classification.'),
+    a,
+    end(a),
+    text('Commands are never edits today. Should I go with the first option?'),
+    { type: 'turn.end' },
+  ]);
+  assert.equal(goal(e).outcome, 'Commands are never edits today. Should I go with the first option?');
+  e.applyAll([prompt('yes go with the first'), text('Now the parser.'), b, end(b), text('Done: commands that write files are edits.'), { type: 'turn.end' }]);
+  assert.equal(e.run.goals.length, 1);
+  // The task's children, in order: round 1's step, the reply, round 2's step.
+  const kids = goal(e).children.map((id) => e.snapshot().nodes[id]);
+  assert.deepEqual(kids.map((n) => n.type), ['step', 'activity', 'step']);
+  const reply = kids[1];
+  assert.equal(reply.kind, 'user');
+  assert.deepEqual(reply.round, { outcome: 'Commands are never edits today. Should I go with the first option?', asked: true });
+  assert.equal(kids[0].children.length, 1, 'the first step keeps only its own work');
+  assert.equal(kids[2].children.length, 1, 'the new work is a step of its own');
+  assert.equal(goal(e).outcome, 'Done: commands that write files are edits.');
+  assert.equal(goal(e).status, 'done');
+});
+
+test('a round goes between the steps done and a plan still to come', () => {
+  const e = new Engine();
+  const a = tool('$ step one');
+  const b = tool('$ step two');
+  e.applyAll([
+    prompt('Do the three things on the list in order please'),
+    { type: 'plan.set', source: 'TodoWrite', replace: true, items: [{ title: 'One', status: 'in_progress' }, { title: 'Two', status: 'pending' }, { title: 'Three', status: 'pending' }] },
+    text('Starting with one.'),
+    a,
+    end(a),
+    { type: 'plan.update', title: 'One', status: 'completed' },
+    text('One is done. Shall I go on?'),
+    { type: 'turn.end' },
+    prompt('yes'),
+    { type: 'plan.update', title: 'Two', status: 'in_progress' },
+    b,
+    end(b),
+  ]);
+  const kids = goal(e).children.map((id) => e.snapshot().nodes[id]);
+  assert.deepEqual(kids.map((n) => (n.type === 'step' ? n.title : n.kind)), ['One', 'user', 'Two', 'Three']);
+  assert.equal(kids[2].children.length, 1);
+});
+
+test('a message mid-turn and /compact do not start a round; after /compact the turn is still over', () => {
+  const e = new Engine();
+  e.applyAll([prompt('Write the release notes for the new version'), text('Here they are.'), { type: 'turn.end' }, prompt('/compact')]);
+  assert.equal(e.run.status, 'waiting');
+  assert.equal(goal(e).status, 'done');
+  assert.ok(!goal(e).children.some((id) => e.snapshot().nodes[id].round));
+  // A substantive message after /compact is a new task, not an interjection.
+  e.apply(prompt('someone asked whether Lucidly streams the log as it runs'));
+  assert.equal(e.run.goals.length, 2);
+});

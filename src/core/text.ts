@@ -212,6 +212,11 @@ const HOUSEKEEPING = /^\/(compact|clear|model|config|cost|context|status|help|me
  * A short message that answers the agent rather than giving it something new: an approval,
  * a choice, or anything at all when the agent's last words asked a question.
  */
+/** A slash command that manages the session (/compact, /model...) rather than asking for anything. */
+export function isHousekeeping(text: string): boolean {
+  return HOUSEKEEPING.test(text.trim());
+}
+
 export function isReply(text: string, agentAsked: boolean): boolean {
   const t = text.trim();
   // Housekeeping commands never start a task; any other slash command is a new request.

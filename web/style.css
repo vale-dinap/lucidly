@@ -331,6 +331,17 @@ svg { flex: none; }
 .finish.reached .mk::before { background: var(--done); border-color: var(--done); }
 .finish .ft { padding: 4px 0; color: var(--faint); font-size: 12.5px; }
 .finish.reached .ft { color: var(--text); font-size: 13px; }
+/* A task over several rounds: where a round ended, and the reply that continued it. */
+.finish.round { margin: 2px 0; }
+.finish.round .ft { font-size: 12.5px; }
+.round-reply { display: flex; align-items: flex-start; gap: 10px; padding: 4px 6px 4px 0; margin: 2px 0 6px; border-radius: var(--r); cursor: pointer; }
+.round-reply:hover { background: var(--hover); }
+.round-reply.sel { background: var(--accent-bg); }
+.round-reply .mk { margin-top: 3px; }
+.round-reply .mk::before { display: none; }
+.round-reply .mk svg { width: 14px; height: 14px; color: var(--muted); background: var(--surface); }
+.round-reply .rr-t { flex: 1; min-width: 0; padding: 6px 10px; border-radius: 9px; background: var(--sunken); color: var(--text); font-size: 13px; }
+.round-reply .rr-t small { display: block; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--faint); }
 .finish .ft small { display: block; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--faint); }
 mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .no-match { color: var(--faint); text-align: center; padding: 40px 0; }
@@ -776,7 +787,9 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .fn.k-read { --c: var(--other); }
 .fn.k-agent { --c: var(--agent); }
 .fn.k-ask, .fn.k-start { --c: var(--muted); }
-.fn.k-end { --c: var(--done); }
+.fn.k-end, .fn.k-mid { --c: var(--done); }
+.fn.k-mid-ask, .fn.k-mid-wait { --c: var(--muted); }
+.fn.mid .gl { width: 12px; height: 12px; }
 .fn.k-todo { --c: var(--faint); }
 .fn.st-done { --fill: color-mix(in srgb, var(--c) 16%, var(--surface)); --stroke: var(--c); --ink: var(--c); }
 .fn.st-done.untr { --fill: color-mix(in srgb, var(--c) 7%, var(--surface)); }

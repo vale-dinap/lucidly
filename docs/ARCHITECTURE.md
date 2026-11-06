@@ -70,7 +70,9 @@ Every event carries `ts`, an optional `scope` (subagent nesting) and `raw`, the 
 
 ## 3. Engine: building the picture
 
-**Goals.** A substantive user prompt opens a *goal* (start point → end point). Short replies continue the current goal when they answer the agent: an approval or a choice ("yes", "go on", "the second one"), or any short message right after the agent asked a question. Other short messages ("all committed and pushed") and slash commands open a new goal, except housekeeping commands such as /compact or /model. A message sent while the agent is still working also continues the current goal (an interjection is shown in the current step, not as a new task).
+**Goals.** A substantive user prompt opens a *goal* (start point → end point). Short replies continue the current goal when they answer the agent: an approval or a choice ("yes", "go on", "the second one"), or any short message right after the agent asked a question. Other short messages ("all committed and pushed") and slash commands open a new goal, except housekeeping commands such as /compact or /model. A message sent while the agent is still working also continues the current goal (an interjection is shown in the current step, not as a new task). Housekeeping commands don't start a turn, so after /compact the session is still between turns.
+
+**Rounds.** A reply that continues a goal after its turn ended starts a new *round*: the reply node sits on the goal, after the steps so far (and before any plan steps not started yet), and records how the previous round ended (`round`: its outcome, interrupted, or ending with a question). The work that follows goes into a new step, and the goal's outcome is the latest round's. The Simple view turns the previous round's end node into an intermediate goal and follows it with the reply; the Detailed view shows the same boundary between the steps.
 
 **Rule: if the agent has a plan, the plan is the backbone.** Steps are inferred only when there is no plan at all.
 

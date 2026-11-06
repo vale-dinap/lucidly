@@ -1110,7 +1110,8 @@ function childrenHtml(n) {
   };
   if (hide) out.push(`<button class="mini-more" data-allacts="${n.id}">Show ${plural(hide, 'earlier action')}</button>`);
   for (const c of kids(n)) {
-    if (c.type === 'step') continue;
+    // Steps have their own list; a reply that started a round sits between them (see taskHtml).
+    if (c.type === 'step' || c.round) continue;
     if (isAct(c)) {
       if (!hidden.has(c.id)) mini.push(miniRow(c));
       continue;
@@ -1184,6 +1185,27 @@ function goalAim(g) {
   return g.intent && !isFirstMove && intent !== norm(g.title) ? g.intent : g.title;
 }
 
+/**
+ * A task's steps in order and, when it ran over several rounds, where each round ended (done,
+ * with a question, or interrupted) and the reply that continued it. Filtering shows matching
+ * steps only.
+ */
+function stepRows(g, shown) {
+  const show = new Set(shown.map((s) => s.id));
+  const out = [];
+  for (const c of kids(g)) {
+    if (c.type === 'step') {
+      if (show.has(c.id)) out.push(stepHtml(c));
+    } else if (c.round && !filtering()) {
+      const r = c.round;
+      const head = r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now';
+      out.push(`<li class="finish round${r.interrupted || r.asked ? '' : ' reached'}" data-select="${g.id}"><span class="mk"></span><div class="ft"><small>${head}</small>${esc(clip(r.outcome ?? '', 360))}</div></li>`);
+      out.push(`<li class="round-reply${S.selected === c.id ? ' sel' : ''}" data-select="${c.id}" data-node="${c.id}"><span class="mk">${icon('user')}</span><div class="rr-t"><small>You replied</small>${hl(c.title.replace(/^You: /, ''))}</div></li>`);
+    }
+  }
+  return out.join('');
+}
+
 function taskHtml(g, q) {
   if (!g) return '';
   const steps = kids(g).filter((c) => c.type === 'step');
@@ -1236,7 +1258,7 @@ function taskHtml(g, q) {
     <div class="task-b">
       ${g.usage ? `<div style="margin:0 0 8px 30px">${unitInfo(g)}</div>` : ''}
       ${own ? `<div class="step-b" style="margin-left:30px">${own}</div>` : ''}
-      <ol class="steps">${shown.map(stepHtml).join('')}${finish('li')}</ol>
+      <ol class="steps">${stepRows(g, shown)}${finish('li')}</ol>
     </div></section>`;
 }
 
@@ -1254,6 +1276,10 @@ const GLYPH = {
   ask: PATHS.ask,
   start: PATHS.user,
   end: 'M6 21V4h11l-2.5 3.5L17 11H6',
+  // Intermediate goals: a round that ended done, with a question, or interrupted.
+  mid: 'M6.5 12.5l3.5 3.5 7.5-8',
+  'mid-ask': 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17.5v.01',
+  'mid-wait': 'M10 8v8 M14 8v8',
   check: 'M5 12.5l4.5 4.5L19 7',
   pause: 'M9 6v12 M15 6v12',
   todo: '',
@@ -1268,6 +1294,10 @@ const SHAPE = {
   todo: '<circle class="sh" cx="18" cy="18" r="11"/>',
   start: '<circle class="sh" cx="18" cy="18" r="13"/>',
   end: '<path class="sh" d="M18 4l14 14-14 14L4 18z"/>',
+  // The end's diamond, smaller: a goal reached on the way.
+  mid: '<path class="sh" d="M18 8l10 10-10 10L8 18z"/>',
+  'mid-ask': '<path class="sh" d="M18 8l10 10-10 10L8 18z"/>',
+  'mid-wait': '<path class="sh" d="M18 8l10 10-10 10L8 18z"/>',
 };
 const KIND_LABEL = { edit: 'file edits', command: 'commands', read: 'reading and searching', agent: 'a subagent', ask: 'a question', todo: 'not started' };
 const glyphSvg = (k) => (GLYPH[k] ? `<svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path d="${GLYPH[k]}"/></svg>` : '');
@@ -1304,7 +1334,7 @@ function flowOpen(g, q, hit) {
 /** One chain node: its incoming connector, the shape, and a short label. */
 function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
   // Start and end both stand for the task: only the one you clicked shows as selected.
-  const sel = S.selected === id && (key.startsWith('s:') || key.startsWith('w:') || (S.flowPick ?? 'start') === key) ? ' sel' : '';
+  const sel = S.selected === id && (key.startsWith('s:') || key.startsWith('w:') || key.startsWith('u:') || (S.flowPick ?? 'start') === key) ? ' sel' : '';
   return {
     key,
     st,
@@ -1324,7 +1354,40 @@ function chainItems(g, q) {
     const st = unresolvedOf(g) ? 'bad' : g.status === 'active' ? (liveNow() ? 'live' : 'idle') : 'done';
     items.push(flowNode({ key: `w:${g.id}`, id: g.id, kind, st, label: plural(g.stats.actions, 'action'), tip: `${plural(g.stats.actions, 'action')}, mostly ${KIND_LABEL[kind]}` }));
   }
-  steps.forEach((s, i) => {
+  // A task can run over several rounds: a reply after its turn ended continues it. The round's
+  // end node stays where it was, turned into an intermediate goal, and the reply follows it.
+  // End nodes are keyed by round, so that change happens in place.
+  let round = 0;
+  const roundEnd = (r, final) => {
+    if (final) {
+      const reached = !!g.outcome || g.status === 'done';
+      const st = reached ? 'done' : g.status === 'waiting' ? 'wait' : 'pend';
+      const label = reached ? 'Done' : g.status === 'waiting' ? 'Interrupted' : 'Goal';
+      const tip = g.outcome ? `Result: ${clip(g.outcome, 400)}` : `Goal: ${clip(goalAim(g), 300)}`;
+      return flowNode({ key: `end:${round}`, id: g.id, kind: 'end', st, label, tip, extra: ' end' });
+    }
+    const label = r.interrupted ? 'Interrupted' : r.asked ? 'Asked' : 'Done';
+    const tip = `${r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now'}${r.outcome ? `: ${clip(r.outcome, 400)}` : ''}\nThe task went on after your reply.`;
+    return flowNode({ key: `end:${round}`, id: g.id, kind: r.interrupted ? 'mid-wait' : r.asked ? 'mid-ask' : 'mid', st: r.interrupted ? 'wait' : 'done', label, tip, extra: ' mid' });
+  };
+  const replyNode = (c) =>
+    flowNode({ key: `u:${c.id}`, id: c.id, kind: 'start', st: 'start', label: 'Reply', tip: `You replied (${clock(c.startedAt)}): ${clip(c.title.replace(/^You: /, ''), 300)}`, extra: ' reply' });
+  let i = 0;
+  for (const c of kids(g)) {
+    if (c.kind === 'user' && c.round) {
+      items.push(roundEnd(c.round, false));
+      round++;
+      items.push(replyNode(c));
+      continue;
+    }
+    if (c.type !== 'step') continue;
+    stepItem(c, i++);
+  }
+  items.push(roundEnd(null, true));
+  items.forEach((it, j) => (it.i = j));
+  return items;
+
+  function stepItem(s, i) {
     const kind = stepKind(s);
     const st = stepState(s);
     const a = s.stats?.actions ?? 0;
@@ -1339,14 +1402,7 @@ function chainItems(g, q) {
     items.push({ ...flowNode({ key: `s:${s.id}`, id: s.id, kind, st, label: s.title, tip, badge, extra: (s.untracked ? ' untr' : '') + dim }), i });
     const cap = capsuleItem(s, dim);
     if (cap) items.push(cap);
-  });
-  const reached = !!g.outcome || g.status === 'done';
-  const st = reached ? 'done' : g.status === 'waiting' ? 'wait' : 'pend';
-  const label = reached ? 'Done' : g.status === 'waiting' ? 'Interrupted' : 'Goal';
-  const tip = g.outcome ? `Result: ${clip(g.outcome, 400)}` : `Goal: ${clip(goalAim(g), 300)}`;
-  items.push(flowNode({ key: 'end', id: g.id, kind: 'end', st, label, tip, extra: ' end' }));
-  items.forEach((it, i) => (it.i = i));
-  return items;
+  }
 }
 
 /** At most this many action marks in a capsule; the rest are a "+N" that opens the step. */
@@ -3343,7 +3399,7 @@ document.addEventListener('click', (e) => {
       S.selected = null;
       return schedule();
     }
-    S.flowPick = key === 'start' || key === 'end' ? key : null;
+    S.flowPick = key === 'start' || key.startsWith('end:') ? key : null;
     return select(el.dataset.fnode);
   }
   if ((el = on('[data-ftoggle]'))) {

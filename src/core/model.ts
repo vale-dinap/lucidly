@@ -62,6 +62,11 @@ export interface ViewNode {
   files?: string[];
   /** 'command': a file change made by a shell command, not by an edit tool. */
   via?: 'command';
+  /**
+   * On a reply that continued a task after its turn ended: it starts a new round of the task, and
+   * this is how the round before it ended (its result, interrupted, or with a question).
+   */
+  round?: { outcome?: string; interrupted?: boolean; asked?: boolean };
   retry?: boolean;
   /** A failed action that something succeeded after, in the same unit or one nested in it. */
   recovered?: boolean;

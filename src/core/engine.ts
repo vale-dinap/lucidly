@@ -20,6 +20,7 @@ import {
   hasIntent,
   intentTitle,
   isSubstantivePrompt,
+  isHousekeeping,
   isReply,
   endsWithQuestion,
   issueSummary,
@@ -484,7 +485,9 @@ export class Engine {
     }
     // A message sent while the agent is still in its turn is an interjection, not a new task.
     const midTurn = this.run.status === 'working';
-    this.run.status = 'working';
+    // /compact, /model...: no turn follows them, so the session (and its task) stays as it was.
+    const housekeeping = isHousekeeping(text);
+    if (!housekeeping) this.run.status = 'working';
     const cur = this.currentGoal();
     // After the turn, a short message continues the task only if it answers the agent
     // ("yes", "go ahead", or anything after a question); "all done, pushed" is a new card.
@@ -494,11 +497,47 @@ export class Engine {
       this.addChunk(g.id, 'prompt', raw ?? text, ts, 'Prompt');
       return;
     }
-    this.setStatus(cur.id, 'active', ts);
+    if (!midTurn && !housekeeping) return this.startRound(cur, text, ts, raw);
+    // Sent while the agent works (or a housekeeping command): a note in the current step.
+    if (!housekeeping) this.setStatus(cur.id, 'active', ts);
     const target = cur.unit ?? cur.current ?? cur.id;
     const n = this.newNode('activity', target, `You: ${truncate(text, 80)}`, { kind: 'user', status: 'done', startedAt: ts });
     this.addChunk(n.id, 'prompt', raw ?? text, ts, 'User reply');
     cur.lastTextChunk = null;
+  }
+
+  /**
+   * A reply that continues a task after its turn ended starts a new round of it. The reply sits
+   * on the task itself, after the steps so far (and before a plan's steps still to come), keeping
+   * how the round before it ended; the work that follows goes into a step of its own.
+   */
+  private startRound(g: GoalCtx, text: string, ts?: string, raw?: string): void {
+    const goal = this.touch(g.id)!;
+    const round = {
+      ...(goal.outcome ? { outcome: goal.outcome } : {}),
+      ...(g.interrupted ? { interrupted: true } : {}),
+      ...(this.agentAsked ? { asked: true } : {}),
+    };
+    this.closeSubtask(g, ts);
+    // The next action picks the next unfinished plan step, or starts a new step (see onToolStart).
+    g.current = null;
+    g.unit = null;
+    g.pending = null;
+    g.lastTextChunk = null;
+    g.interrupted = false;
+    const n = this.newNode('activity', g.id, `You: ${truncate(text, 80)}`, { kind: 'user', status: 'done', startedAt: ts, round });
+    const rest = goal.children.filter((c) => c !== n.id);
+    let at = rest.length;
+    while (at > 0) {
+      const c = this.nodes.get(rest[at - 1]);
+      if (!(c?.type === 'step' && (c.status === 'pending' || c.tentative))) break;
+      at--;
+    }
+    rest.splice(at, 0, n.id);
+    goal.children = rest;
+    this.addChunk(n.id, 'prompt', raw ?? text, ts, 'User reply');
+    delete goal.outcome;
+    this.setStatus(g.id, 'active', ts);
   }
 
   // ───────────────────────────── narration
