@@ -35,7 +35,7 @@ const S = {
   lastFollowTarget: null,
   view: 'path', // 'path' | 'actions'
   // The path view's layout: 'simple' (tasks as nodes) or 'detailed' (cards with every step).
-  layout: ['glance', 'detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'simple',
+  layout: ['simple', 'detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'glance',
   // Keep the overview (stats and timeline) on screen while scrolling.
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // Token heat: a green-to-red glow around tasks and steps by how many tokens they used.
@@ -1608,7 +1608,7 @@ function glanceRow(el, g, open, unfold) {
   const head = flowGoalHead(g, qa);
   const un = unresolvedOf(g);
   const tip = [g.title, [qa ? 'Question' : plural(kids(g).filter((c) => c.type === 'step').length, 'step'), un ? `${un} failed` : '', ago(g.startedAt)].filter(Boolean).join(' · ')].join('\n');
-  const node = `<button type="button" class="gw-n" data-gspot="${g.id}" title="${esc(tip)}" aria-label="${esc(g.title)}"><span class="fg-n st-${head.st}">${head.st === 'qa' ? glyphSvg('ask') : head.st === 'done' ? glyphSvg('check') : head.st === 'wait' ? glyphSvg('pause') : ''}${un ? '<span class="fn-b bad">!</span>' : ''}</span></button>`;
+  const node = `<button type="button" class="gw-n" data-gspot="${g.id}" title="${esc(tip + heatTip(g.id))}" aria-label="${esc(g.title)}"><span class="fg-n st-${head.st}"${heatStyle(g.id)}>${head.st === 'qa' ? glyphSvg('ask') : head.st === 'done' ? glyphSvg('check') : head.st === 'wait' ? glyphSvg('pause') : ''}${un ? '<span class="fn-b bad">!</span>' : ''}</span></button>`;
   const c = el.firstChild;
   if (c.__html !== node) {
     c.innerHTML = node;

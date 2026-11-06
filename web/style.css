@@ -1044,7 +1044,8 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* ───────────── Glance: the run at a glance, with (nearly) no text ───────────── */
 /* Only the views switch stays in the toolbar, and the overview gives way to the orb. */
-#tbPath.tb-glance > :not(.vseg) { display: none !important; }
+/* Glance keeps only the view switch and the token heat button. */
+#tbPath.tb-glance > :not(.vseg):not(#heatBtn) { display: none !important; }
 #tbPath.tb-glance { justify-content: center; }
 .pane.glance-on #overview, .pane.glance-on .fab-wrap { display: none; }
 .pane.glance-on .toolbar { top: 0; }
