@@ -10,6 +10,10 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 - **The session list refreshes itself while it's open**, so a session started in the meantime shows up straight away. Only the transcripts that changed are read again.
 - **A light / dark theme switch**, at the right end of the top bar: System (the default, following the operating system), Light or Dark. The choice is remembered.
 
+### Fixed
+
+- **Files changed by shell commands are now edits**, not plain commands: `sed -i`, redirections and heredocs, `tee`, `cp`/`mv`/`rm`, PowerShell's `Set-Content` and the like, and scripts that write files. They read "Edit app.js, README.md (by command)" (or Delete, Rename, Move), count with the edits, appear in the Files view and keep their command line, which shows where a diff would be.
+
 ### Changed
 
 - **`lucidly` no longer guesses which session to open.** It opens the folder's session when there's no doubt (the only one, or the only one in progress) and otherwise starts on the session list.

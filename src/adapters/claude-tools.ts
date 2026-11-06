@@ -1,6 +1,8 @@
 /** Knowledge about Claude Code's tools: kinds, short labels and raw renderings. */
 import type { ActivityKind } from '../core/events.ts';
+import { posix, win32 } from 'node:path';
 import { firstLine, truncate } from '../core/text.ts';
+import { shellWrites } from './shell-writes.ts';
 
 export interface ToolSummary {
   kind: ActivityKind;
@@ -9,6 +11,8 @@ export interface ToolSummary {
   command?: string;
   files?: string[];
   spawnsAgent?: boolean;
+  /** Set on file changes made by a shell command rather than an edit tool. */
+  via?: 'command';
   raw: string;
 }
 
@@ -139,3 +143,69 @@ export function summarizeTool(name: string, input: Input): ToolSummary {
 
 /** Tools that express a plan rather than an action. */
 export const PLANNING_TOOLS = new Set(['TodoWrite', 'TaskCreate', 'TaskUpdate', 'ExitPlanMode']);
+
+// ───────────────────────────── files changed through the shell
+/**
+ * Files the session has dealt with (read, edited, written), by normalized absolute path: a path
+ * found inside a script counts as a written file only if it is one of these.
+ */
+export class KnownFiles {
+  private byKey = new Map<string, string>();
+  add(path: string): void {
+    if (path) this.byKey.set(fileKey(path), path);
+  }
+  /** The known file a path names: the same file, or else the only one it is the tail of. */
+  find(path: string, resolved: string): string | undefined {
+    const exact = this.byKey.get(fileKey(resolved));
+    if (exact) return exact;
+    const tail = '/' + fileKey(path).replace(/^(?:\.\/)+/, '');
+    const hits = [...this.byKey].filter(([k]) => k.endsWith(tail));
+    return hits.length === 1 ? hits[0][1] : undefined;
+  }
+}
+
+const fileKey = (p: string) => {
+  const s = p.replace(/\\/g, '/');
+  return /^[a-z]:\//i.test(s) ? s.toLowerCase() : s;
+};
+
+/** A path from a command, made absolute from the folder it ran in (Git Bash's /c/... included). */
+export function resolveFrom(base: string | undefined, p: string): string {
+  if (p.startsWith('~')) return p;
+  const win = base ? /^[a-z]:[\\/]/i.test(base) : /^[a-z]:[\\/]/i.test(p);
+  const fix = (x: string) => (win ? x.replace(/^\/([a-z])(?=\/|$)/i, (_, d: string) => `${d.toUpperCase()}:`) : x);
+  const path = win ? win32 : posix;
+  const q = fix(p);
+  if (path.isAbsolute(q) || !base) return win ? path.normalize(q) : q;
+  return path.resolve(fix(base), q);
+}
+
+/**
+ * A shell command that changes files, as an edit made by a command: the files it writes or deletes
+ * (resolved from `cwd`), labelled "Edit a.ts, b.ts (by command)". Undefined when it changes none.
+ */
+export function commandEdit(name: string, input: Input, s: ToolSummary, cwd: string | undefined, known: KnownFiles): ToolSummary | undefined {
+  const files: string[] = [];
+  const ops: string[] = [];
+  for (const w of shellWrites(str(input.command), { powershell: name === 'PowerShell' })) {
+    const dir = w.dir ? resolveFrom(cwd, w.dir) : cwd;
+    const abs = resolveFrom(dir, w.path);
+    const file = w.guessed ? known.find(w.path, abs) : abs;
+    if (!file || files.some((f) => fileKey(f) === fileKey(file))) continue;
+    files.push(file);
+    ops.push(w.op);
+  }
+  if (!files.length) return undefined;
+  const names = files.map(baseName);
+  const list = (n: string[]) => (n.length > 3 ? `${n.slice(0, 3).join(', ')} and ${n.length - 3} more` : n.join(', '));
+  let what: string;
+  if (ops.every((o) => o === 'delete')) what = `Delete ${list(names)}`;
+  else if (ops.every((o) => o === 'from' || o === 'to')) {
+    // Moves and renames only: "Rename a.md → b.md", or how many files moved.
+    const from = files.filter((_, i) => ops[i] === 'from');
+    const to = files.filter((_, i) => ops[i] === 'to');
+    const verb = new Set(files.map((f) => fileKey(f).replace(/[^/]*$/, ''))).size === 1 ? 'Rename' : 'Move';
+    what = from.length === 1 && to.length === 1 ? `${verb} ${baseName(from[0])} → ${baseName(to[0])}` : `${verb} ${list(from.map(baseName))}`;
+  } else what = `Edit ${list(names)}`;
+  return { ...s, kind: 'edit', via: 'command', label: `${what} (by command)`, files };
+}

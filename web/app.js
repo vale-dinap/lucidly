@@ -565,22 +565,24 @@ setInterval(checkHealth, 30000);
 addEventListener('load', checkHealth);
 
 // ───────────────────────────── file edits: every change to every file, at a glance
-/** Edits and writes grouped by file, with their totals. */
+/** Edits and writes grouped by file, with their totals. A command that changed several files counts for each. */
 function fileEdits() {
   const map = new Map();
   for (const r of liveActions()) {
     if ((r.kind !== 'edit' && r.kind !== 'write') || !r.files?.length) continue;
-    const key = relPath(r.files[0]);
-    const id = key.toLowerCase();
-    let e = map.get(id);
-    if (!e) map.set(id, (e = { key, path: r.files[0], inside: !isAbsPath(key), edits: [], add: 0, del: 0, failed: 0, last: '' }));
-    e.edits.push(r);
-    if (r.status === 'failed') e.failed++;
-    else if (r.diff) {
-      e.add += r.diff.add;
-      e.del += r.diff.del;
+    for (const path of r.files) {
+      const key = relPath(path);
+      const id = key.toLowerCase();
+      let e = map.get(id);
+      if (!e) map.set(id, (e = { key, path, inside: !isAbsPath(key), edits: [], add: 0, del: 0, failed: 0, last: '' }));
+      e.edits.push(r);
+      if (r.status === 'failed') e.failed++;
+      else if (r.diff) {
+        e.add += r.diff.add;
+        e.del += r.diff.del;
+      }
+      if ((r.startedAt ?? '') > e.last) e.last = r.startedAt ?? '';
     }
-    if ((r.startedAt ?? '') > e.last) e.last = r.startedAt ?? '';
   }
   return [...map.values()];
 }
@@ -2155,8 +2157,9 @@ function transcriptHtml(rootId, chunks) {
 function inputHtml(c, n, result) {
   const file = n.files?.[0] ?? String(c.text).split('\n')[0].replace(/^(?:Edit|Write)\s+/, '');
   if (result?.patch?.length && !result.failed) return diffView(`${c.node}:diff`, file, markWords(rowsFromPatch(result.patch)), true);
+  // Changed by a shell command: the transcript has the command, not the change.
+  if (n.via === 'command' || n.kind === 'command') return preBlock(`${c.node}:in`, 'Command', c.text, '', 'shell');
   if (n.kind === 'edit') return diffView(`${c.node}:diff`, file, markWords(rowsFromInput(c.text)), false);
-  if (n.kind === 'command') return preBlock(`${c.node}:in`, 'Command', c.text, '', 'shell');
   if (n.kind === 'write' && langOf(file)) {
     const body = String(c.text).split('\n').slice(2).join('\n'); // drop the "Write <file>" header
     return preBlock(`${c.node}:in`, relPath(file), body, '', langOf(file));
@@ -2326,7 +2329,7 @@ function filteredActions() {
 /** "−2 +3" for an edit, counted from its recorded change (skipped when the input was capped). */
 function diffStat(r) {
   if (r.diff) return diffBadge(r.diff.del, r.diff.add);
-  if (r.kind !== 'edit' || !r.input || r.input.endsWith('\n…')) return '';
+  if (r.kind !== 'edit' || r.via || !r.input || r.input.endsWith('\n…')) return '';
   let add = 0;
   let del = 0;
   for (const l of r.input.split('\n')) {

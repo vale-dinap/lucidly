@@ -4,7 +4,7 @@
  *  - `claude -p --output-format stream-json` output (same message shapes, plus init/result records)
  */
 import type { DiffHunk, Adapter, LucidlyEvent, PlanItem, PlanStatus } from '../core/events.ts';
-import { PLANNING_TOOLS, summarizeTool } from './claude-tools.ts';
+import { KnownFiles, PLANNING_TOOLS, commandEdit, summarizeTool } from './claude-tools.ts';
 
 type Rec = Record<string, any>;
 
@@ -100,6 +100,9 @@ export class ClaudeCodeAdapter implements Adapter {
   private counted = new Set<string>();
   /** Usage of the latest message, held until its content blocks have been emitted. */
   private pendingUsage: { id: string; ev: LucidlyEvent } | null = null;
+  /** The working folder as of the latest record, and the files seen so far: for shell edits. */
+  private cwd?: string;
+  private known = new KnownFiles();
 
   /** @param scope set for subagent transcripts: the callId of the spawning Agent call. */
   private readonly scope?: string;
@@ -117,6 +120,7 @@ export class ClaudeCodeAdapter implements Adapter {
     const out: LucidlyEvent[] = [];
     if (this.pendingUsage && (rec.type !== 'assistant' || rec.message?.id !== this.pendingUsage.id)) out.push(...this.flush());
     const ts: string | undefined = rec.timestamp;
+    if (typeof rec.cwd === 'string' && rec.cwd) this.cwd = rec.cwd;
     const emit = (e: LucidlyEvent) => {
       if (this.scope) e.scope = this.scope;
       if (!e.ts && ts) e.ts = ts;
@@ -310,7 +314,9 @@ export class ClaudeCodeAdapter implements Adapter {
       }
       return;
     }
-    const s = summarizeTool(name, input);
+    let s = summarizeTool(name, input);
+    if (s.kind === 'command') s = commandEdit(name, input, s, this.cwd, this.known) ?? s;
+    for (const f of s.files ?? []) this.known.add(f);
     emit({
       type: 'tool.start',
       callId: b.id,
@@ -321,6 +327,7 @@ export class ClaudeCodeAdapter implements Adapter {
       command: s.command,
       files: s.files,
       spawnsAgent: s.spawnsAgent,
+      ...(s.via ? { via: s.via } : {}),
       raw: s.raw,
     });
   }

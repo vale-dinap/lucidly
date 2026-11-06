@@ -60,6 +60,8 @@ export interface ViewNode {
   tool?: string;
   detail?: string;
   files?: string[];
+  /** 'command': a file change made by a shell command, not by an edit tool. */
+  via?: 'command';
   retry?: boolean;
   /** A failed action that something succeeded after, in the same unit or one nested in it. */
   recovered?: boolean;
@@ -103,6 +105,8 @@ export interface ActionRow {
   diff?: { add: number; del: number };
   /** Files the action touched (edits and writes). */
   files?: string[];
+  /** 'command': a file change made by a shell command; `command` then holds its command line. */
+  via?: 'command';
   goalId?: string;
   goal?: string;
   stepId?: string;

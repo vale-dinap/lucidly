@@ -88,6 +88,8 @@ export interface ToolStartEvent extends EventBase {
   files?: string[];
   /** true when this call spawns a subagent whose events use scope = callId. */
   spawnsAgent?: boolean;
+  /** 'command': a file change made by a shell command (kind 'edit'), not by an edit tool. */
+  via?: 'command';
 }
 
 /** One hunk of a unified diff, with real file line numbers. */

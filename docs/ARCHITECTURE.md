@@ -92,6 +92,8 @@ Narration is matched to plan steps by keyword similarity and explicit references
 
 **Context at a glance.** Each activity gets a kind (read, edit, command, search, web, agent, ask, other) and a short label. Steps aggregate the files and commands they touched.
 
+**Edits made by commands.** A shell command that changes files becomes an edit with `via: 'command'`, labelled "Edit a.ts, b.ts (by command)" (or Delete, Rename, Move), and keeps its command line. `src/adapters/shell-writes.ts` reads the files from the command text: redirects, heredocs and file commands are parsed like a small shell would (never inside quotes, comments or heredoc text), and `.log` files and background commands are left out as logs. A script counts only if it calls something that writes files; then the path given to that call counts, and other path-like strings only when the session has already seen them as files. The adapter resolves the paths from the session's working folder, after any `cd` in the command. Only the command is known, not the change, so these edits have no diff.
+
 ## 4. UI: a local web app
 
 `lucidly` starts a small zero-dependency Node server on `localhost` and opens the browser.

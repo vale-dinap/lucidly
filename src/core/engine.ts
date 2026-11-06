@@ -222,7 +222,8 @@ export class Engine {
       };
       if (n.diff) row.diff = n.diff;
       if (n.files?.length && (n.kind === 'edit' || n.kind === 'write')) row.files = n.files;
-      if (n.kind === 'command' && text) {
+      if (n.via) row.via = n.via;
+      if ((n.kind === 'command' || n.via === 'command') && text) {
         row.command = text.replace(/^(?:\$|PS>)\s?/, '');
         if (n.detail) row.short = n.detail.replace(/^\$\s?/, '');
       }
@@ -888,6 +889,7 @@ export class Engine {
           tool: ev.tool,
           detail: ev.detail,
           files: ev.files,
+          ...(ev.via ? { via: ev.via } : {}),
           status: 'active',
           startedAt: ev.ts,
         });
