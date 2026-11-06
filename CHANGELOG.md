@@ -18,6 +18,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 - **A task continued by your reply shows where each round ended.** When you answer after the agent finished ("yes, go with the first"), the chain no longer files your reply inside an earlier step and loses the first result: the end node stays as an intermediate goal (a smaller diamond: done, asked, or interrupted, with that round's result), your reply follows it, then the new steps and the final goal. The Detailed view shows the same.
 - **Every message of yours has its own place.** One sent while the agent worked was filed inside a step; it is now a node in the Simple view and a row in the Detailed view, between the steps before and after it. In the details panel your messages are outlined in the accent colour.
+- **Copy buttons on every card of the side panel**: messages, the agent's text and results (as Markdown), plans, thinking, commands and their parts, inputs, outputs, errors and diffs (as a unified diff). Long blocks are copied whole, even when only their first lines are shown.
 - **A task's request, messages and round ends open its whole conversation.** Click one (in the Simple or Detailed view) and the panel shows the task's conversation, scrolled to that point, which glows a soft yellow.
 - **A message after `/compact` is no longer mistaken for one sent mid-turn**, which used to fold it into the previous task.
 

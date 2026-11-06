@@ -562,6 +562,7 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* ───────── GitHub-style diff table */
 .dfile { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; font-size: 11.5px; color: var(--muted); padding-bottom: 6px; }
+.dstat { align-items: center; }
 .dfile > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff { background: var(--surface); border-top: 1px solid var(--border); overflow-x: auto; max-height: 520px; overflow-y: auto; }
 .diff table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
@@ -1021,3 +1022,22 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .down-bar code { padding: 1px 5px; border-radius: 4px; background: var(--surface); font-size: 11.5px; }
 .down-bar svg { width: 16px; height: 16px; fill: none; stroke: var(--bad); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 @keyframes down-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Copy buttons on the details panel's cards: faint until the card is hovered, a tick once copied. */
+.cpy { flex: none; width: 22px; height: 22px; padding: 3px; border: 0; border-radius: 6px; background: transparent; color: var(--faint); cursor: pointer; opacity: 0.65; transition: opacity 0.15s, background 0.15s, color 0.15s; }
+.cpy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cpy:hover { opacity: 1; color: var(--text); background: var(--hover); }
+.cpy:focus-visible { opacity: 1; outline: 2px solid var(--accent); }
+.cpy.ok { opacity: 1; color: var(--done); }
+.cpy.ok svg path { d: path('M5 12.5l4.5 4.5L19 7'); }
+.pl { display: flex; align-items: center; gap: 8px; }
+.pl-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl .cpy { margin: -4px -6px -4px 0; }
+.dfile .cpy { margin: -4px -6px -4px 2px; }
+/* Cards of the conversation: the button sits in the top right corner. */
+.ev-prompt, .ev-text, details.ev-think > div { position: relative; }
+.ev-prompt > .cpy, .ev-text > .cpy, details.ev-think > div > .cpy { position: absolute; top: 4px; right: 4px; opacity: 0.5; }
+.ev-prompt, details.ev-think > div { padding-right: 34px; }
+.ev-text { padding-right: 28px; }
+.ev-text > .cpy { top: -2px; right: -2px; }
+.ev-prompt:hover > .cpy, .ev-text:hover > .cpy, details.ev-think > div:hover > .cpy, .ev > .cpy:focus-visible, .ev > .cpy.ok { opacity: 1; }

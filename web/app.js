@@ -1904,14 +1904,46 @@ function diffHtml(text, mode) {
     .join('\n');
 }
 
-function preBlock(key, label, text, cls = '', mode = 'auto') {
+/*
+ * Copy buttons. Each holds an id into a registry of texts, not the text itself (outputs can be
+ * long). Ids only grow; the oldest entries go once there are many, long after their buttons were
+ * redrawn away.
+ */
+const copies = new Map();
+let copySeq = 0;
+const COPY_ICON = 'M9 9h10v11H9z M5 15V4h10';
+function copyBtn(text) {
+  const what = 'Copy to clipboard';
+  const id = ++copySeq;
+  copies.set(id, String(text ?? ''));
+  if (copies.size > 4000) copies.delete(copies.keys().next().value);
+  return `<button type="button" class="cpy" data-copy="${id}" title="${esc(what)}" aria-label="${esc(what)}">${SVG(COPY_ICON)}</button>`;
+}
+
+async function copyText(btn) {
+  const text = copies.get(Number(btn.dataset.copy));
+  if (text === undefined) return toast('Nothing to copy: select the item again');
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add('ok');
+    clearTimeout(btn.__t);
+    btn.__t = setTimeout(() => btn.classList.remove('ok'), 1200);
+  } catch {
+    toast('Clipboard not available');
+  }
+}
+
+/** A diff as unified text: hunk headers, then lines marked +, - or a space. */
+const diffText = (rows) => rows.map((r) => (r.t === 'hunk' ? r.text : `${r.t === 'add' ? '+' : r.t === 'del' ? '-' : ' '}${r.text}`)).join('\n');
+
+function preBlock(key, label, text, cls = '', mode = 'auto', copy = text) {
   const lines = String(text ?? '').split('\n');
   const LIMIT = 16;
   const full = S.fullPre.has(key) || lines.length <= LIMIT;
   const shown = full ? text : lines.slice(0, LIMIT).join('\n');
   let body = cls.includes('failed') ? esc(shown) : diffHtml(shown, mode);
   if (cls.includes('hang')) body = hangLines(body);
-  return `<div class="pl">${esc(label)}</div><pre class="${cls}">${body}</pre>${
+  return `<div class="pl"><span class="pl-t">${esc(label)}</span>${copyBtn(copy)}</div><pre class="${cls}">${body}</pre>${
     full ? '' : `<button class="show-all" data-full="${esc(key)}">Show all ${lines.length} lines</button>`
   }`;
 }
@@ -2299,7 +2331,7 @@ function diffView(key, file, rows, numbered) {
         : `<tr class="dl-${r.t}">${numbered ? `<td class="ln">${r.o ?? ''}</td><td class="ln">${r.n ?? ''}</td>` : ''}<td class="sg">${r.t === 'add' ? '+' : r.t === 'del' ? '−' : ''}</td><td class="cd">${codeHtml(r, lang)}</td></tr>`,
     )
     .join('');
-  return `<div class="pl dfile"><span title="${esc(file)}">${esc(relPath(file))}</span><span class="dstat">${del ? `<span class="d">−${del}</span>` : ''}${add ? `<span class="a">+${add}</span>` : ''}</span></div>
+  return `<div class="pl dfile"><span title="${esc(file)}">${esc(relPath(file))}</span><span class="dstat">${del ? `<span class="d">−${del}</span>` : ''}${add ? `<span class="a">+${add}</span>` : ''}${copyBtn(diffText(rows))}</span></div>
     <div class="diff"><table>${body}</table></div>${full ? '' : `<button class="show-all" data-full="${esc(key)}">Show all ${rows.length} lines</button>`}`;
 }
 
@@ -2344,20 +2376,20 @@ function transcriptHtml(rootId, chunks) {
       case 'prompt':
         {
           const sub = c.label === 'Task given to subagent';
-          out.push(`<div class="ev ev-prompt${sub ? '' : ' you'}${glow(c)}"><span class="who">${sub ? 'Task for subagent' : 'You'}</span>${esc(c.text)}</div>`);
+          out.push(`<div class="ev ev-prompt${sub ? '' : ' you'}${glow(c)}">${copyBtn(c.text)}<span class="who">${sub ? 'Task for subagent' : 'You'}</span>${esc(c.text)}</div>`);
         }
         break;
       case 'text':
-        out.push(`<div class="ev ev-text">${md(c.text)}</div>`);
+        out.push(`<div class="ev ev-text">${copyBtn(c.text)}${md(c.text)}</div>`);
         break;
       case 'plan':
-        out.push(`<div class="ev ev-text ev-plan"><span class="who">Plan</span>${md(c.text)}</div>`);
+        out.push(`<div class="ev ev-text ev-plan">${copyBtn(c.text)}<span class="who">Plan</span>${md(c.text)}</div>`);
         break;
       case 'outcome':
-        out.push(`<div class="ev ev-text ev-outcome${glow(c)}"><span class="who">Result</span>${md(c.text)}</div>`);
+        out.push(`<div class="ev ev-text ev-outcome${glow(c)}">${copyBtn(c.text)}<span class="who">Result</span>${md(c.text)}</div>`);
         break;
       case 'thinking':
-        out.push(`<details class="ev ev-think"><summary>Thinking…</summary><div>${esc(c.text)}</div></details>`);
+        out.push(`<details class="ev ev-think"><summary>Thinking…</summary><div>${copyBtn(c.text)}${esc(c.text)}</div></details>`);
         break;
       case 'notice': {
         const n = N(c.node);
@@ -2407,13 +2439,13 @@ function commandHtml(c, n) {
     if (!edits || lang !== 'javascript' || !isDense(text)) return preBlock(k, label, text, hang, lang);
     const on = S.reformat.has(k);
     return (
-      preBlock(k, on ? `${label} · reformatted` : label, on ? reformatJs(text) : text, hang, lang) +
+      preBlock(k, on ? `${label} · reformatted` : label, on ? reformatJs(text) : text, hang, lang, text) +
       `<button class="show-all" data-reformat="${esc(k)}">${on ? 'Show as written' : 'Reformat for reading'}</button>`
     );
   };
   const html = parts.map((p, i) => {
     const k = `${key}:${i}`;
-    if (p.kind === 'shell') return preBlock(k, shells++ ? 'Then' : 'Command', (shells === 1 ? prompt : '') + p.text, hang, 'shell');
+    if (p.kind === 'shell') return preBlock(k, shells++ ? 'Then' : 'Command', (shells === 1 ? prompt : '') + p.text, hang, 'shell', p.text);
     if (p.kind === 'script') return code(k, `Script${LANG_NAMES[p.lang] ? ` · ${LANG_NAMES[p.lang]}` : p.lang ? ` · ${p.lang}` : ''}`, p.text, p.lang);
     if (p.kind === 'content') return code(k, `Written to ${relPath(p.file)}`, p.text, scriptLang(p.file) ?? '');
     return preBlock(k, 'Input', p.text, hang, '');
@@ -3275,6 +3307,10 @@ document.addEventListener('click', (e) => {
   if (!(t instanceof Element)) return;
   const on = (sel) => t.closest(sel);
   let el;
+  if ((el = on('[data-copy]'))) {
+    e.preventDefault();
+    return void copyText(el);
+  }
   if (on('[data-close]')) {
     S.follow = false;
     S.selected = null;
