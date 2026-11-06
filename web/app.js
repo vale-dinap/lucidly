@@ -3685,13 +3685,18 @@ function togglePin() {
 // The toolbar sits right under a pinned overview: track its height.
 // The Files header pins right under the toolbar: track the toolbar's height too.
 new ResizeObserver(() => $('#pane').style.setProperty('--tb-h', `${$('#tbPath').offsetHeight}px`)).observe($('#tbPath'));
+// Glance doesn't scroll, but a selection brought into view (or anything else) still could move it:
+// it stays at the top.
+$('#pane').addEventListener('scroll', (e) => {
+  if (e.currentTarget.classList.contains('glance-on') && e.currentTarget.scrollTop) e.currentTarget.scrollTop = 0;
+});
 let ovH = 0;
 new ResizeObserver(() => {
   const ov = $('#overview');
   const pane = $('#pane');
   const h = ov.offsetHeight;
   pane.style.setProperty('--ov-h', `${h}px`);
-  if (ovH && h !== ovH && S.pinOv && ov.classList.contains('compact')) pane.scrollTop += h - ovH;
+  if (ovH && h !== ovH && S.pinOv && ov.classList.contains('compact') && !pane.classList.contains('glance-on')) pane.scrollTop += h - ovH;
   ovH = h;
 }).observe($('#overview'));
 
