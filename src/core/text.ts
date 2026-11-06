@@ -137,6 +137,9 @@ export function extractPlan(text: string, requireCue = false): ExtractedPlan | n
   const lead = before.slice(-2).join(' ');
   const cue = PLAN_CUE.test(lead);
   if ((!best.numbered || requireCue) && !cue) return null;
+  // Bullets that all open with a bold label ("**Rows:** the spotlight...") describe things, they
+  // aren't steps to take.
+  if (!best.numbered && best.items.every((s) => /^\*\*[^*]{1,60}?(?::\*\*|\*\*:)/.test(s.trim()))) return null;
   const items = best.items.map(cleanItem).filter((s) => s.length > 1);
   if (items.length < 2) return null;
   if (best.items.some((s) => s.length > 400)) return null;

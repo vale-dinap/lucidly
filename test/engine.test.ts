@@ -335,7 +335,7 @@ test('text plan steps done all at once count as done when the task ends; not aft
     const a = tool('Edit app.js', { kind: 'edit', tool: 'Edit', files: ['web/app.js'] });
     e.applyAll([
       prompt('Change the strip colours and the edit tips please'),
-      text("I'll make two changes:\n- **Colours:** a new one for reads\n- **Tips:** scale them with the bar width"),
+      text("I'll make two changes:\n- a new colour for reads\n- tips that scale with the bar width"),
       a,
       end(a),
       text('Done: both are in.'),

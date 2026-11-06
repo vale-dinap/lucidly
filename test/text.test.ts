@@ -73,3 +73,12 @@ test('prompt and deviation heuristics', () => {
   assert.equal(hasDeviationCue('The test failed, let me fix the import.'), true);
   assert.equal(hasDeviationCue('Now let me write the docs.'), false);
 });
+
+test('bullets that each open with a bold label describe things: not a plan', () => {
+  const described = "I'll replace the bottom section with the task wheel. Plan:\n- **Rows:** the spotlight always sits in the third row.\n- **Sliding:** rows slide to their new places.\n- **The rest:** the orb returns to the live task.";
+  assert.equal(extractPlan(described), null);
+  const steps = 'Plan:\n- Add the parser\n- Wire it into the adapter\n- Write the tests';
+  assert.deepEqual(extractPlan(steps)?.items.length, 3);
+  const numbered = 'Plan:\n1. **Engine:** record rounds\n2. **Page:** draw them';
+  assert.equal(extractPlan(numbered)?.items.length, 2);
+});

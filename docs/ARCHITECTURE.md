@@ -78,7 +78,7 @@ Every event carries `ts`, an optional `scope` (subagent nesting) and `raw`, the 
 
 **Steps from a plan.** A plan comes from:
 - explicit planning tools (exact statuses), or
-- a numbered/bulleted list in narration with planning cues ("plan", "I'll", "steps"…). A text plan stays *tentative* until the agent actually acts on it. A list in a final summary is therefore never mistaken for a plan.
+- a numbered/bulleted list in narration with planning cues ("plan", "I'll", "steps"…). Bullets that all open with a bold label ("**Rows:** …") describe things and are not a plan; numbered lists are read as plans either way. A text plan stays *tentative* until the agent actually acts on it. A list in a final summary is therefore never mistaken for a plan.
 
 Narration is matched to plan steps by keyword similarity and explicit references ("step 3"), favouring forward progress. Matching a later step completes the earlier ones.
 
