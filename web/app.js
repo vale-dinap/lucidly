@@ -1485,7 +1485,7 @@ function renderGlance(view) {
       <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div></div>
       <div class="gx-title"></div>
       <div class="gx-wheel"></div>
-      <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>Enter</kbd> select · <kbd>F</kbd> back to now</div>
+      <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>Enter</kbd> toggle selection · <kbd>F</kbd> back to now</div>
     </div>`;
     view.__glance = true;
     view.__flow = false;
@@ -3175,16 +3175,43 @@ function renderActions() {
 }
 
 function setView(v) {
-  if (v === 'glance' || v === 'simple' || v === 'detailed' || v === 'files') {
-    S.layout = v;
-    localStorage.setItem('lucidly.layout', v);
-    v = 'path';
-  }
-  if (v !== 'path' && v !== 'actions') return;
-  S.view = v;
-  if (S.follow) S.lastFollowTarget = null;
-  writeHash();
-  schedule();
+  const layout = v === 'glance' || v === 'simple' || v === 'detailed' || v === 'files' ? v : S.layout;
+  const view = layout === v ? 'path' : v;
+  if (view !== 'path' && view !== 'actions') return;
+  const isGlance = (vw, l) => vw === 'path' && l === 'glance';
+  const apply = () => {
+    S.layout = layout;
+    localStorage.setItem('lucidly.layout', layout);
+    S.view = view;
+    if (S.follow) S.lastFollowTarget = null;
+    writeHash();
+  };
+  // Into or out of Glance, the views cross-fade: the browser keeps a picture of the old one while
+  // the new one is drawn at once (where it can't, or motion is reduced, the switch is instant).
+  // The state changes now (keys pressed in quick succession read it); only the drawing waits for
+  // the browser's picture of the old view. During the transition (.vt-glance), the timeline
+  // collapses or opens, the view switch and the heat button slide to their new places, and the
+  // rest cross-fades.
+  const fade =
+    S.run && isGlance(S.view, S.layout) !== isGlance(view, layout) && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  apply();
+  if (!fade) return schedule();
+  const root = document.documentElement;
+  const into = isGlance(view, layout);
+  root.classList.add('vt-glance');
+  // The timeline travels with the view switch, by as much as it moves, so the gap between them
+  // stays the same all along (--vt-dy: how far up the timeline goes, or comes from).
+  const barTop = () => $('.toolbar:not([hidden]) .vseg')?.getBoundingClientRect().top ?? 0;
+  const before = barTop();
+  const t = document.startViewTransition(() => {
+    render();
+    const moved = barTop() - before;
+    root.style.setProperty('--vt-dy', `${into ? moved : -moved}px`);
+  });
+  t.finished.finally(() => {
+    root.classList.remove('vt-glance');
+    root.style.removeProperty('--vt-dy');
+  });
 }
 
 function writeHash() {

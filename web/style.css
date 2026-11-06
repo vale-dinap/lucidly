@@ -1048,6 +1048,29 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* ───────────── Glance: the run at a glance, with (nearly) no text ───────────── */
 /* Only the views switch stays in the toolbar, and the overview gives way to the orb. */
+/* Switching into or out of Glance (see setView): the timeline collapses upwards and fades (or
+   comes back), the view switch, the heat button and the toolbar move to their new places, and the
+   rest cross-fades. The names are only set during the transition. */
+.vt-glance #overview { view-transition-name: lc-overview; }
+.vt-glance .toolbar:not([hidden]) { view-transition-name: lc-toolbar; }
+.vt-glance .toolbar:not([hidden]) .vseg { view-transition-name: lc-views; }
+.vt-glance #heatBtn { view-transition-name: lc-heat; }
+::view-transition-group(*) { animation-duration: 0.34s; animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.28s; }
+/* The bar that moves stays above the timeline, and the app bar above both: the timeline slides
+   away under it. */
+.vt-glance header.top { view-transition-name: lc-top; }
+::view-transition-group(lc-top) { z-index: 4; }
+
+::view-transition-group(lc-overview) { z-index: 1; }
+::view-transition-group(lc-toolbar) { z-index: 2; }
+::view-transition-group(lc-views), ::view-transition-group(lc-heat) { z-index: 3; }
+/* The timeline slides with the view switch (same distance, time and easing, see setView), so the
+   gap between them holds, and fades out on the way (or in, coming back). */
+::view-transition-old(lc-overview) { animation: lc-slide 0.34s cubic-bezier(0.3, 0, 0.2, 1) both; }
+::view-transition-new(lc-overview) { animation: lc-slide-in 0.34s cubic-bezier(0.3, 0, 0.2, 1) both; }
+@keyframes lc-slide { to { opacity: 0; transform: translateY(var(--vt-dy, -40px)); } }
+@keyframes lc-slide-in { from { opacity: 0; transform: translateY(var(--vt-dy, -40px)); } }
 /* Glance keeps only the view switch and the token heat button. */
 #tbPath.tb-glance > :not(.vseg):not(#heatBtn) { display: none !important; }
 #tbPath.tb-glance { justify-content: center; }
