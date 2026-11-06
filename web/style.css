@@ -441,6 +441,10 @@ pre.hang .ln { display: block; padding-left: 4ch; text-indent: -4ch; }
 
 /* ───────── picker */
 .picker { width: min(680px, 92vw); max-height: 78vh; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22); }
+/* A column: the session list takes the room left between the header and the footer, so only it scrolls. */
+.picker[open] { display: flex; flex-direction: column; overflow: hidden; }
+#pickerList { flex: 1 1 auto; min-height: 0; max-height: none; }
+#pickerOpen, .picker-h, .picker-f { flex: none; }
 .picker::backdrop { background: rgba(10, 12, 18, 0.32); backdrop-filter: blur(2px); }
 .picker-h { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--border); margin: 0; }
 .picker-h h3 { margin: 0; font-size: 14px; font-weight: 620; flex: 1; }
@@ -454,6 +458,21 @@ pre.hang .ln { display: block; padding-left: 4ch; text-indent: -4ch; }
 .plist .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .plist .dot.live { background: var(--done); box-shadow: 0 0 0 3px var(--done-bg); }
 .plist .mute { color: var(--faint); cursor: default; }
+/* All projects: sessions grouped by project directory, each group a light rounded box that folds. */
+.plist li.pbar { display: flex; justify-content: flex-end; padding: 2px 8px 6px; cursor: default; }
+.plist li.pbar:hover, .plist li.pg:hover { background: none; }
+.plist li.pg { display: block; padding: 0; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px; cursor: default; overflow: hidden; }
+.plist li.pg > ul { list-style: none; margin: 0; padding: 0 4px 4px; }
+.pg-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pg-h:hover { background: var(--hover); }
+.pg.open > .pg-h { border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.pg-h .dot:not(.live) { display: none; }
+.pg-n { font-weight: 650; white-space: nowrap; }
+.pg-here { font-size: 10.5px; font-weight: 600; color: var(--accent); background: var(--accent-bg); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.pg-d { flex: 1; min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-c { color: var(--faint); font-size: 12px; white-space: nowrap; }
+.pg-h .chev { width: 14px; height: 14px; flex: none; color: var(--faint); transition: transform 0.2s; }
+.pg.open > .pg-h .chev { transform: rotate(90deg); }
 .psec { font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); padding: 10px 18px 0; }
 #pickerOpen:not(:empty) { border-bottom: 1px solid var(--border); }
 

@@ -2885,8 +2885,6 @@ async function openPicker({ quiet = false } = {}) {
   }, PICKER_REFRESH);
   for (const b of dlg.querySelectorAll('[data-scope]')) b.classList.toggle('on', b.dataset.scope === S.pickerScope);
   const list = $('#pickerList');
-  // Redraw only on change (compared with what was last written: the browser may serialize differently).
-  const fill = (el, html) => el.lucidlyHtml !== html && (el.innerHTML = el.lucidlyHtml = html);
   if (!quiet) fill(list, '<li class="mute">Loading…</li>');
   // Only the latest request may fill the list (switching tabs while one is slow), and a failure
   // says so with a retry instead of leaving "Loading…" up for good. A quiet refresh takes the
@@ -2918,16 +2916,68 @@ async function openPicker({ quiet = false } = {}) {
     fill(list, `<li class="mute">${S.pickerScope === 'project' ? `No Claude Code sessions for ${esc(data.cwd)} yet. Try “All projects”.` : 'No Claude Code sessions found.'}</li>`);
     return;
   }
-  fill(list, data.sessions
-    .map((s) => {
-      const title = s.title ?? s.firstPrompt ?? s.id;
-      const sub = [s.title ? s.firstPrompt : '', S.pickerScope === 'all' ? s.cwd ?? s.project : ''].filter(Boolean).join(' · ');
-      return `<li data-path="${esc(s.path)}" title="${esc(s.path)}">
+  S.pickerData = data;
+  fill(list, sessionListHtml(data));
+}
+
+// Redraw only on change (compared with what was last written: the browser may serialize differently).
+function fill(el, html) {
+  if (el.lucidlyHtml !== html) el.innerHTML = el.lucidlyHtml = html;
+}
+
+function sessionRow(s, withDir) {
+  const title = s.title ?? s.firstPrompt ?? s.id;
+  const sub = [s.title ? s.firstPrompt : '', withDir ? s.cwd ?? s.project : ''].filter(Boolean).join(' · ');
+  return `<li data-path="${esc(s.path)}" title="${esc(s.path)}">
         <span class="dot${s.live ? ' live' : ''}" title="${s.live ? 'Active in the last few minutes' : ''}"></span>
         <div class="pm"><div class="pt">${esc(title)}</div><div class="ps">${esc(sub)}</div></div>
         <span class="pw">${esc(ago(s.mtime))}</span></li>`;
-    })
-    .join(''));
+}
+
+/** A directory as a comparable key: forward slashes, no trailing slash, any case on Windows. */
+const dirKey = (p) => {
+  const k = String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+  return /^[a-z]:/i.test(k) ? k.toLowerCase() : k;
+};
+
+/**
+ * The session list. On "All projects" sessions are grouped by project directory: the project
+ * Lucidly was started from first, then by the latest session. Groups fold; what you open or close
+ * is kept (S.pgOpen) across the list's refreshes. By default the start project and any project
+ * with a live session are open, or every project when there are only a few.
+ */
+function sessionListHtml(data) {
+  if (S.pickerScope !== 'all') return data.sessions.map((s) => sessionRow(s, false)).join('');
+  const here = dirKey(data.cwd);
+  const groups = new Map();
+  for (const s of data.sessions) {
+    const key = s.cwd ? dirKey(s.cwd) : `project:${s.project}`;
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { key, dir: s.cwd ?? s.project ?? '', named: !!s.cwd, sessions: [], latest: 0, live: false }));
+    g.sessions.push(s);
+    g.latest = Math.max(g.latest, s.mtime);
+    g.live ||= !!s.live;
+  }
+  const list = [...groups.values()].sort((a, b) => (b.key === here) - (a.key === here) || b.latest - a.latest);
+  const few = list.length <= 3;
+  const isOpen = (g) => S.pgOpen?.get(g.key) ?? (few || g.key === here || g.live);
+  const allOpen = list.every(isOpen);
+  const bar = list.length > 1 ? `<li class="pbar"><button type="button" class="linkbtn" data-pgall="${allOpen ? 'close' : 'open'}">${allOpen ? 'Collapse all' : 'Expand all'}</button></li>` : '';
+  return (
+    bar +
+    list
+      .map((g) => {
+        const open = isOpen(g);
+        const name = g.named ? g.dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || g.dir : g.dir;
+        const head = `<button type="button" class="pg-h" data-pgroup="${esc(g.key)}" aria-expanded="${open}" title="${esc(g.dir)}">
+          <span class="dot${g.live ? ' live' : ''}"></span>
+          <span class="pg-n">${esc(name)}</span>${g.key === here ? '<span class="pg-here">this project</span>' : ''}
+          <span class="pg-d">${g.named ? esc(g.dir) : ''}</span>
+          <span class="pg-c">${plural(g.sessions.length, 'session')} · ${esc(ago(g.latest))}</span>${CHEV}</button>`;
+        return `<li class="pg${open ? ' open' : ''}">${head}${open ? `<ul>${g.sessions.map((s) => sessionRow(s, false)).join('')}</ul>` : ''}</li>`;
+      })
+      .join('')
+  );
 }
 
 async function openSession(path) {
@@ -3404,6 +3454,16 @@ document.addEventListener('click', (e) => {
     return connect(el.dataset.run);
   }
   if (on('[data-picker-retry]')) return void openPicker();
+  if ((el = on('[data-pgroup]'))) {
+    S.pgOpen ??= new Map();
+    S.pgOpen.set(el.dataset.pgroup, el.getAttribute('aria-expanded') !== 'true');
+    return void (S.pickerData && fill($('#pickerList'), sessionListHtml(S.pickerData)));
+  }
+  if ((el = on('[data-pgall]'))) {
+    S.pgOpen ??= new Map();
+    for (const b of document.querySelectorAll('#pickerList [data-pgroup]')) S.pgOpen.set(b.dataset.pgroup, el.dataset.pgall === 'open');
+    return void (S.pickerData && fill($('#pickerList'), sessionListHtml(S.pickerData)));
+  }
   if ((el = on('[data-scope]'))) {
     S.pickerScope = el.dataset.scope;
     return void openPicker();
