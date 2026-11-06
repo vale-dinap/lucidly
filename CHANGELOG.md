@@ -7,7 +7,12 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 ### Added
 
 - **A clear sign when the Lucidly server stops.** The status pill turns red ("Server stopped") and a bar under the top bar says the page no longer updates and since when. Live timers and animations stop, and keep-awake "only while working" lets go. Start `lucidly` again and the page reconnects by itself, and the warning goes.
+- **The session list refreshes itself while it's open**, so a session started in the meantime shows up straight away. Only the transcripts that changed are read again.
 - **A light / dark theme switch**, at the right end of the top bar: System (the default, following the operating system), Light or Dark. The choice is remembered.
+
+### Changed
+
+- **`lucidly` no longer guesses which session to open.** It opens the folder's session when there's no doubt (the only one, or the only one in progress) and otherwise starts on the session list.
 
 ## [0.2.0] - 2026-11-05
 

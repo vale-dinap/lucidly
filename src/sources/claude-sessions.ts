@@ -21,6 +21,9 @@ export function encodeCwd(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
+/** A session written to within this long counts as live (the agent is, or was just, at work). */
+export const LIVE_MS = 3 * 60 * 1000;
+
 export interface SessionInfo {
   id: string;
   path: string;
@@ -43,9 +46,21 @@ async function readSlice(path: string, start: number, length: number): Promise<s
   }
 }
 
+// Descriptions by path, reused while the file is unchanged: the session list refreshes every few
+// seconds while it is open, and only the sessions written to since are read again.
+const described = new Map<string, SessionInfo>();
+
 /** Cheap metadata: read the head for cwd/first prompt and the tail for the latest title. */
 export async function describeSession(path: string): Promise<SessionInfo> {
   const st = await stat(path);
+  const known = described.get(path);
+  if (known && known.mtime === st.mtimeMs && known.size === st.size) return known;
+  const info = await readDescription(path, st);
+  described.set(path, info);
+  return info;
+}
+
+async function readDescription(path: string, st: { mtimeMs: number; size: number }): Promise<SessionInfo> {
   const info: SessionInfo = {
     id: basename(path, '.jsonl'),
     path,

@@ -14,7 +14,7 @@ From a project folder where you use Claude Code (Node.js 22.18 or newer):
 npx @vale-dinap/lucidly
 ```
 
-It opens that folder's latest session in your browser and follows it live while you keep working. To keep the `lucidly` command around, install it: see [Getting started](#getting-started).
+It opens in your browser on that folder's session, or lets you pick one if there are several, and follows it live while you keep working. To keep the `lucidly` command around, install it: see [Getting started](#getting-started).
 
 ## Purpose
 
@@ -104,10 +104,10 @@ npm start            # same as: node src/cli.ts
 npm link             # optional: puts a `lucidly` command on your PATH
 ```
 
-Run `lucidly` (or `npm start`) from a project folder. It opens the latest Claude Code session of that folder in your browser and follows it live while you keep working in Claude Code as usual.
+Run `lucidly` (or `npm start`) from a project folder. It opens in your browser and follows a Claude Code session live while you keep working in Claude Code as usual. If the folder has a single session, or a single one in progress, that one opens straight away; otherwise the session list opens for you to choose. The list keeps itself up to date, so a session you start in the meantime shows up in it.
 
 ```sh
-lucidly                         # latest session of the current folder
+lucidly                         # this folder's session (or choose one)
 lucidly 89a0789f                # a specific session (id or id prefix, or a .jsonl path)
 lucidly list [--all]            # recent sessions (this folder, or all projects)
 lucidly outline <session>       # text outline in the terminal

@@ -9,7 +9,7 @@ import { extname, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RunSession } from './session.ts';
 import type { Source } from '../sources/source.ts';
-import { ClaudeSessionSource, findSession, listSessions } from '../sources/claude-sessions.ts';
+import { ClaudeSessionSource, LIVE_MS, findSession, listSessions } from '../sources/claude-sessions.ts';
 
 const WEB_DIR = fileURLToPath(new URL('../../web/', import.meta.url));
 const SRC_DIR = fileURLToPath(new URL('../', import.meta.url));
@@ -33,7 +33,6 @@ async function codeChangedSince(t: number): Promise<boolean> {
   return false;
 }
 const MAX_BODY = 512 * 1024 * 1024;
-const LIVE_MS = 3 * 60 * 1000;
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',

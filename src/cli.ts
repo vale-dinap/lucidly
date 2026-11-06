@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lucidly                     start the viewer; opens the latest session of this project
+ * lucidly                     start the viewer; opens this project's session if there is an obvious one
  * lucidly <session-id|file>   open a specific Claude Code session (id prefix or .jsonl path)
  * agent | lucidly             view a piped stream (Claude stream-json or plain text)
  * lucidly --load run.lucidly.json
@@ -16,7 +16,7 @@ import { Engine } from './core/engine.ts';
 import { actionList, outline } from './outline.ts';
 import { LucidlyServer } from './server/server.ts';
 import { RunSession } from './server/session.ts';
-import { ClaudeSessionSource, findSession, listSessions } from './sources/claude-sessions.ts';
+import { ClaudeSessionSource, LIVE_MS, findSession, listSessions } from './sources/claude-sessions.ts';
 import { StreamSource, type StreamFormat } from './sources/stdin.ts';
 
 interface Args {
@@ -85,7 +85,8 @@ function parseArgs(argv: string[]): Args {
 const HELP = `Lucidly — see what your AI agent is doing, at a glance.
 
 Usage:
-  lucidly [session]            Start the viewer (default: latest session of this folder)
+  lucidly [session]            Start the viewer. Without a session, it opens this folder's only
+                               session, or the only live one; otherwise it lets you choose
   <agent> | lucidly            View a piped stream (Claude stream-json or plain text)
   lucidly --load <file>        Open a saved .lucidly.json run
   lucidly list [--all]         List recent Claude Code sessions
@@ -193,13 +194,13 @@ async function main(): Promise<void> {
   if (args.target) {
     first = await server.open(new ClaudeSessionSource(await resolveSession(args.target)));
   } else if (!first) {
-    const [latest] = await listSessions({ cwd: args.cwd, limit: 1 });
-    if (latest) first = await server.open(new ClaudeSessionSource(latest.path));
+    const pick = await obviousSession(args.cwd);
+    if (pick) first = await server.open(new ClaudeSessionSource(pick));
   }
 
   const url = server.url + (first ? `#run=${first.id}` : '');
   console.error(`Lucidly is running at ${url}`);
-  if (first) console.error(`Showing: ${first.engine.run.title ?? first.label}`);
+  console.error(first ? `Showing: ${first.engine.run.title ?? first.label}` : 'Choose a session in the browser.');
   console.error('Press Ctrl+C to stop.');
   if (args.open) openBrowser(url);
 
@@ -209,6 +210,17 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/**
+ * The session to open at startup, when there is no doubt which one is wanted: the folder's only
+ * session, or the only one being written to (live). Otherwise none, and the page lets you choose.
+ */
+async function obviousSession(cwd: string): Promise<string | undefined> {
+  const sessions = await listSessions({ cwd });
+  if (sessions.length === 1) return sessions[0].path;
+  const live = sessions.filter((s) => Date.now() - s.mtime < LIVE_MS);
+  return live.length === 1 ? live[0].path : undefined;
 }
 
 main().catch((e) => {

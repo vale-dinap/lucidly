@@ -2614,15 +2614,32 @@ function connect(runId) {
 }
 
 // ───────────────────────────── picker
-async function openPicker() {
+/*
+ * The session list. While it is open (and the tab is visible) it refreshes every few seconds, so a
+ * session started in the meantime shows up at once; the server only reads again the files that
+ * changed. A refresh is quiet: no "Loading…", the list is only redrawn if it changed, and a failed
+ * one leaves the list as it was (the server-stopped bar says why).
+ */
+const PICKER_REFRESH = 4000;
+async function openPicker({ quiet = false } = {}) {
   const dlg = $('#picker');
-  if (!dlg.open) dlg.showModal();
+  if (!dlg.open) {
+    if (quiet) return;
+    dlg.showModal();
+  }
+  S.pickerTimer ??= setInterval(() => {
+    if (!dlg.open) S.pickerTimer = void clearInterval(S.pickerTimer);
+    else if (!document.hidden) openPicker({ quiet: true });
+  }, PICKER_REFRESH);
   for (const b of dlg.querySelectorAll('[data-scope]')) b.classList.toggle('on', b.dataset.scope === S.pickerScope);
   const list = $('#pickerList');
-  list.innerHTML = '<li class="mute">Loading…</li>';
+  // Redraw only on change (compared with what was last written: the browser may serialize differently).
+  const fill = (el, html) => el.lucidlyHtml !== html && (el.innerHTML = el.lucidlyHtml = html);
+  if (!quiet) fill(list, '<li class="mute">Loading…</li>');
   // Only the latest request may fill the list (switching tabs while one is slow), and a failure
-  // says so with a retry instead of leaving "Loading…" up for good.
-  const ticket = (S.pickerTicket = (S.pickerTicket ?? 0) + 1);
+  // says so with a retry instead of leaving "Loading…" up for good. A quiet refresh takes the
+  // current ticket: it never cancels a visible load still in flight.
+  const ticket = quiet ? S.pickerTicket : (S.pickerTicket = (S.pickerTicket ?? 0) + 1);
   const get = async (url) => {
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
@@ -2633,23 +2650,23 @@ async function openPicker() {
     [{ runs }, data] = await Promise.all([get('/api/runs'), get(`/api/sessions?scope=${S.pickerScope}`)]);
     if (!Array.isArray(runs) || !Array.isArray(data?.sessions)) throw new Error('unexpected reply from the server');
   } catch (e) {
-    if (ticket !== S.pickerTicket) return;
+    if (ticket !== S.pickerTicket || quiet) return;
     const why = e?.name === 'TimeoutError' ? 'the server took too long to answer' : e instanceof TypeError ? 'the Lucidly server is not reachable (is it still running?)' : (e?.message ?? String(e));
-    list.innerHTML = `<li class="mute perr">Couldn't load the sessions: ${esc(why)}. <button type="button" class="tbtn" data-picker-retry>Retry</button></li>`;
+    fill(list, `<li class="mute perr">Couldn't load the sessions: ${esc(why)}. <button type="button" class="tbtn" data-picker-retry>Retry</button></li>`);
     return;
   }
   if (ticket !== S.pickerTicket) return;
   const others = runs.filter((r) => !r.key.startsWith('claude:'));
-  $('#pickerOpen').innerHTML = others.length
+  fill($('#pickerOpen'), others.length
     ? `<div class="psec">Open in Lucidly</div><ul class="plist">${others
         .map((r) => `<li data-run="${r.id}"><span class="dot${r.live ? ' live' : ''}"></span><div class="pm"><div class="pt">${esc(r.title ?? r.label)}</div><div class="ps">${esc(r.live ? 'Live stream' : 'Saved run')} · ${r.eventCount} events</div></div></li>`)
         .join('')}</ul>`
-    : '';
+    : '');
   if (!data.sessions.length) {
-    list.innerHTML = `<li class="mute">${S.pickerScope === 'project' ? `No Claude Code sessions for ${esc(data.cwd)} yet. Try “All projects”.` : 'No Claude Code sessions found.'}</li>`;
+    fill(list, `<li class="mute">${S.pickerScope === 'project' ? `No Claude Code sessions for ${esc(data.cwd)} yet. Try “All projects”.` : 'No Claude Code sessions found.'}</li>`);
     return;
   }
-  list.innerHTML = data.sessions
+  fill(list, data.sessions
     .map((s) => {
       const title = s.title ?? s.firstPrompt ?? s.id;
       const sub = [s.title ? s.firstPrompt : '', S.pickerScope === 'all' ? s.cwd ?? s.project : ''].filter(Boolean).join(' · ');
@@ -2658,7 +2675,7 @@ async function openPicker() {
         <div class="pm"><div class="pt">${esc(title)}</div><div class="ps">${esc(sub)}</div></div>
         <span class="pw">${esc(ago(s.mtime))}</span></li>`;
     })
-    .join('');
+    .join(''));
 }
 
 async function openSession(path) {
@@ -3397,7 +3414,11 @@ setInterval(() => S.run && renderHeader(), 15000);
   const wanted = m && runs.find((r) => r.id === m[1]);
   if (wanted) connect(wanted.id);
   else if (runs.length) connect(runs[runs.length - 1].id);
-  else render();
+  else {
+    // The server opened nothing (no obvious session for this folder): let the user choose.
+    render();
+    openPicker();
+  }
 })();
 // The search box widens while in use: re-check whether the filter chips still fit.
 for (const ev of ['focus', 'blur']) $('#pathSearch').addEventListener(ev, () => setTimeout(fitToolbar, 230));
