@@ -35,7 +35,7 @@ const S = {
   lastFollowTarget: null,
   view: 'path', // 'path' | 'actions'
   // The path view's layout: 'simple' (tasks as nodes) or 'detailed' (cards with every step).
-  layout: ['detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'simple',
+  layout: ['glance', 'detailed', 'files'].includes(localStorage.getItem('lucidly.layout')) ? localStorage.getItem('lucidly.layout') : 'simple',
   // Keep the overview (stats and timeline) on screen while scrolling.
   pinOv: localStorage.getItem('lucidly.pinOverview') !== '0', // pinned unless you unpinned it
   // Token heat: a green-to-red glow around tasks and steps by how many tokens they used.
@@ -1420,6 +1420,398 @@ function chainItems(g, q) {
   }
 }
 
+// ───────────────────────────── glance view: the run at a glance, with (nearly) no text
+/*
+ * Answers "is it going fine, and does it need me?" from across the room. A large orb says what
+ * the agent is doing (working, your turn, in trouble, quiet), the current task's steps run below
+ * it as large shapes, and the earlier tasks are rows of small dots fading with age. Text only in
+ * tooltips; a click opens the side panel, a double click the task or step in the Simple view.
+ */
+const GLANCE_GLYPH = {
+  trouble: 'M12 6.5v7 M12 17.5v.01',
+  quiet: 'M7.5 12h.01 M12 12h.01 M16.5 12h.01',
+  done: GLYPH.check,
+  pause: GLYPH.pause,
+  ask: 'M9 9.2a3 3 0 1 1 4.2 2.8c-.7.3-1.2 1-1.2 1.8v.7 M12 17.6v.01',
+};
+// What the agent is doing now, from the kind of its latest action.
+const DOING = { edit: 'edit', write: 'edit', command: 'command', read: 'read', search: 'read', web: 'read', agent: 'agent', ask: 'ask' };
+
+/** The run's state for the orb: its class, glyph, tooltip, and when the current stretch began. */
+function glanceState() {
+  const r = S.run;
+  const g = N(r.currentGoal) ?? N(r.goals[r.goals.length - 1]);
+  if (S.downAt) return { st: 'off', path: GLANCE_GLYPH.pause, tip: 'The Lucidly server has stopped: this is the session as it was', since: r.updatedAt, ago: true };
+  if (r.status === 'working') {
+    if (isStale()) return { st: 'off', path: GLANCE_GLYPH.quiet, tip: `Quiet: nothing new since ${clock(r.updatedAt)}`, since: r.updatedAt, ago: true };
+    const step = N(r.currentStep);
+    if (step && hasOpenIssue(step)) return { st: 'bad', path: GLANCE_GLYPH.trouble, tip: 'Working, with failures nothing has fixed yet in this step', since: turnStart(g) };
+    const unit = N(r.currentUnit) ?? step;
+    const acts = unit ? descendants(unit, isAct) : [];
+    const kind = DOING[acts[acts.length - 1]?.kind] ?? 'read';
+    return { st: 'work', path: GLYPH[kind], tip: `Working: ${KIND_LABEL[kind] ?? 'reading'} now`, since: turnStart(g) };
+  }
+  if (g?.status === 'waiting') return { st: 'off', path: GLANCE_GLYPH.pause, tip: 'Interrupted', since: r.updatedAt, ago: true };
+  const asking = g ? descendants(g, isAct).some((a) => a.kind === 'ask' && a.status === 'active') : false;
+  const asked = asking || !!g?.asked;
+  const recent = !!r.updatedAt && Date.now() - Date.parse(r.updatedAt) < 30 * 60 * 1000;
+  if (recent) return { st: 'you', path: asked ? GLANCE_GLYPH.ask : GLANCE_GLYPH.done, tip: asked ? 'Your turn: the agent asked you something' : 'Your turn: the agent finished', since: r.updatedAt, ago: true };
+  return { st: 'rest', path: GLANCE_GLYPH.done, tip: `Finished, ${ago(r.updatedAt)}`, since: r.updatedAt, ago: true };
+}
+
+/** When the current turn began: your latest message on the task, or the task itself. */
+function turnStart(g) {
+  if (!g) return S.run.updatedAt;
+  let t = g.startedAt;
+  for (const c of kids(g)) if (c.kind === 'user' && c.startedAt && (!t || c.startedAt > t)) t = c.startedAt;
+  return t;
+}
+
+const glanceTime = (s) => (s.ago ? ago(s.since) : dur(s.since));
+
+function renderGlance(view) {
+  if (!view.__glance) {
+    view.innerHTML = `<div class="glance">
+      <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div></div>
+      <div class="gx-title"></div>
+      <div class="gx-wheel"></div>
+      <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>F</kbd> back to now</div>
+    </div>`;
+    view.__glance = true;
+    view.__flow = false;
+    view.__html = null;
+    S.glanceReady = false;
+  }
+  const root = view.firstChild;
+  const r = S.run;
+  const goals = r.goals.map(N).filter(Boolean);
+  const live = N(r.currentGoal) ?? goals[goals.length - 1];
+  // The spotlight: the live task, unless you moved to another one (see glanceMove).
+  let at = S.gSpot ? goals.findIndex((g) => g.id === S.gSpot) : -1;
+  if (at < 0) {
+    S.gSpot = null;
+    at = live ? goals.indexOf(live) : goals.length - 1;
+  }
+  const spot = goals[at];
+  // While the wheel turns, the spotlight stays compressed like the rest: the task unfolds only
+  // once it has settled there, so scrolling past tasks doesn't open each one on the way.
+  const wait = (S.gMoveAt ?? 0) + GLANCE_SETTLE - Date.now();
+  const settled = wait <= 0;
+  if (!settled) {
+    clearTimeout(S.gSettleTimer);
+    S.gSettleTimer = setTimeout(schedule, wait + 20);
+  }
+  // With the side panel open, a past task shows its conversation there as soon as it reaches the
+  // spotlight (from your first message), without waiting for it to unfold; back on the live
+  // task, the panel shows what it showed before. A closed panel stays closed.
+  const past = !!spot && spot !== live;
+  if (past && S.gOpened !== spot.id) {
+    S.gOpened = spot.id;
+    if (S.selected) {
+      if (!S.gAutoSel) S.gPrevSel = { sel: S.selected, pick: S.flowPick, focus: S.focus };
+      S.gAutoSel = spot.id;
+      S.selected = spot.id;
+      S.flowPick = 'start';
+      S.focus = { at: 'request' };
+    }
+  } else if (!past) {
+    S.gOpened = null;
+    if (S.gAutoSel && S.selected === S.gAutoSel && S.gPrevSel) {
+      S.selected = N(S.gPrevSel.sel) ? S.gPrevSel.sel : live.id;
+      S.flowPick = S.gPrevSel.pick;
+      S.focus = S.gPrevSel.focus;
+    }
+    S.gAutoSel = null;
+    S.gPrevSel = null;
+  }
+
+  const s = glanceState();
+  const state = root.querySelector('.gx-state');
+  const away = !!S.gSpot;
+  const cls = `gx-state ${s.st}${away ? ' away' : ''}`;
+  if (state.className !== cls) state.className = cls;
+  const orb = state.firstChild;
+  const path = orb.querySelector('path');
+  if (path.getAttribute('d') !== s.path) {
+    path.setAttribute('d', s.path);
+    orb.classList.remove('swap');
+    void orb.offsetWidth; // restart the glyph's fade-in
+    orb.classList.add('swap');
+  }
+  const tip = away ? `${s.tip}\nClick to go back to the current task (F)` : s.tip;
+  orb.title = tip;
+  orb.setAttribute('aria-label', tip);
+  S.glanceSince = s;
+  root.querySelector('.gx-time').textContent = glanceTime(s);
+  const title = root.querySelector('.gx-title');
+  const t = spot ? spot.title : '';
+  if (title.textContent !== t) title.textContent = t;
+  title.title = t;
+
+  // The wheel: two tasks above the spotlight and two below, compressed to their node and fading
+  // with distance. Empty slots keep the spotlight on the same spot at the start and end of the run.
+  const wheel = root.querySelector('.gx-wheel');
+  const before = new Map();
+  for (const el of wheel.children) before.set(el.dataset.key, el.getBoundingClientRect().top);
+  const old = new Map([...wheel.children].map((el) => [el.dataset.key, el]));
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const animate = !!S.glanceReady && !calm;
+  let prev = null;
+  for (let d = -2; d <= 2; d++) {
+    const g = goals[at + d];
+    const key = g ? g.id : `pad${d}`;
+    let el = old.get(key);
+    const fresh = !el;
+    if (fresh) {
+      el = document.createElement('div');
+      el.dataset.key = key;
+      if (g) el.innerHTML = '<div class="gw-c"></div><div class="gx-track"></div><div class="gx-gaps"><span class="gx-gap l" hidden></span><span class="gx-gap r" hidden></span></div>';
+    } else old.delete(key);
+    const open = d === 0 && settled;
+    const wasOpen = el.classList.contains('spot');
+    const c = g
+      ? `gw-row d${Math.abs(d)}${open ? ' spot' : ''}${goals[at + d - 1] ? ' up' : ''}${goals[at + d + 1] ? ' down' : ''}`
+      : 'gw-row pad';
+    if (el.className !== c) el.className = c;
+    const next = prev ? prev.nextSibling : wheel.firstChild;
+    if (next !== el) wheel.insertBefore(el, next);
+    prev = el;
+    if (g) glanceRow(el, g, open, open && !wasOpen && !calm);
+  }
+  for (const el of old.values()) el.remove();
+  // Rows slide to their new places (measured before and after); new ones come in from the side
+  // the wheel turns from.
+  if (animate)
+    for (const el of wheel.children) {
+      const top = el.getBoundingClientRect().top;
+      const from = before.get(el.dataset.key);
+      if (from === undefined) {
+        if (!el.classList.contains('pad')) el.animate([{ opacity: 0, transform: `translateY(${(S.gDir ?? 1) > 0 ? 36 : -36}px)` }, {}], { duration: glanceFast() ? 170 : 380, easing: 'cubic-bezier(.2,.7,.3,1)' });
+      } else if (Math.abs(from - top) > 1) el.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], { duration: glanceFast() ? 170 : 380, easing: 'cubic-bezier(.2,.7,.3,1)' });
+    }
+  S.glanceReady = true;
+}
+
+/** Moving fast through the wheel: rows slide quicker so they keep up. */
+const glanceFast = () => (S.gStreak ?? 0) >= 2 && Date.now() - (S.gStepAt ?? 0) < 200;
+
+/** How long the wheel must rest before the task in the spotlight unfolds. */
+const GLANCE_SETTLE = 140;
+/** A step's slot along the spotlight's line, in px (the node itself is --sz in the CSS). */
+const GLANCE_SLOT = 88;
+
+/** A task in the wheel: its node when compressed; its chain, on one line, in the spotlight. */
+function glanceRow(el, g, open, unfold) {
+  const qa = isQA(g);
+  const head = flowGoalHead(g, qa);
+  const un = unresolvedOf(g);
+  const tip = [g.title, [qa ? 'Question' : plural(kids(g).filter((c) => c.type === 'step').length, 'step'), un ? `${un} failed` : '', ago(g.startedAt)].filter(Boolean).join(' · ')].join('\n');
+  const node = `<button type="button" class="gw-n" data-gspot="${g.id}" title="${esc(tip)}" aria-label="${esc(g.title)}"><span class="fg-n st-${head.st}">${head.st === 'qa' ? glyphSvg('ask') : head.st === 'done' ? glyphSvg('check') : head.st === 'wait' ? glyphSvg('pause') : ''}${un ? '<span class="fn-b bad">!</span>' : ''}</span></button>`;
+  const c = el.firstChild;
+  if (c.__html !== node) {
+    c.innerHTML = node;
+    c.__html = node;
+  }
+  if (!open) return;
+  const track = el.children[1];
+  const items = chainItems(g, '')
+    .filter((it) => it.st !== 'cap')
+    .map((it) => ({ ...it, cls: it.cls.replace(' dim', '') }));
+  reconcile(track, items, !unfold && !!S.glanceReady);
+  placeChain(el, g, items, unfold);
+}
+
+/**
+ * Lays the spotlight's chain out on one line: one node in the middle, on the wheel's spine (the
+ * live step, the latest one, or the one you picked), the start and the end always in view, and
+ * the steps between fading with distance. Steps that don't fit leave a dotted gap.
+ */
+function placeChain(row, g, items, unfold) {
+  const track = row.children[1];
+  const els = [...track.children].filter((x) => !x.__leaving);
+  const n = items.length;
+  if (!n) return;
+  const keys = items.map((it) => it.key);
+  // The node in the middle.
+  let c = S.gFocus?.goal === g.id ? keys.indexOf(S.gFocus.key) : -1;
+  // By default: on a past task, your request (where it began); on the live one, the step under
+  // way, or the latest.
+  if (c < 0 && g.id !== (S.run.currentGoal ?? S.run.goals[S.run.goals.length - 1])) c = 0;
+  if (c < 0) {
+    for (let i = n - 1; i >= 0 && c < 0; i--) if (items[i].st === 'live' || items[i].st === 'idle' || items[i].st === 'bad') c = i;
+    if (c < 0) c = Math.max(0, n - 2);
+  }
+  S.gFocusNow = { goal: g.id, keys, c };
+  const s = GLANCE_SLOT;
+  const W = track.clientWidth;
+  const mid = W / 2;
+  const L = s / 2 + 4;
+  const R = W - s / 2 - 4;
+  const nat = (i) => mid + (i - c) * s;
+  const pinL = nat(0) < L;
+  const pinR = nat(n - 1) > R;
+  const x = [];
+  const op = [];
+  let hidL = 0;
+  let hidR = 0;
+  for (let i = 0; i < n; i++) {
+    let xi = nat(i);
+    let o = 1;
+    if (i === 0) xi = Math.max(L, xi);
+    else if (i === n - 1) xi = Math.min(R, xi);
+    else if (i !== c) {
+      // Between the pinned ends: room for a gap of one slot next to each pinned end.
+      const lo = pinL ? L + s * 1.25 : L;
+      const hi = pinR ? R - s * 1.25 : R;
+      if (xi < lo - 1) {
+        o = 0;
+        hidL++;
+      } else if (xi > hi + 1) {
+        o = 0;
+        hidR++;
+      } else {
+        const d = Math.abs(i - c);
+        o = Math.max(0.42, 1 - d * 0.14);
+        // Fading out towards a gap.
+        if (pinL && xi < lo + s) o *= 0.35 + (0.65 * (xi - lo)) / s;
+        if (pinR && xi > hi - s) o *= 0.35 + (0.65 * (hi - xi)) / s;
+      }
+      xi = Math.max(L, Math.min(R, xi));
+    }
+    x.push(xi);
+    op.push(o);
+  }
+  // Hidden nodes wait at the gap, so they slide in from there.
+  els.forEach((el, i) => {
+    if (i >= n) return;
+    const to = `translateX(${Math.round(x[i] - s / 2)}px)`;
+    if (unfold) {
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${Math.round(mid - s / 2)}px)`;
+      el.style.opacity = '0';
+    }
+    el.__to = [to, op[i]];
+    el.classList.toggle('gx-mid', i === c);
+    el.classList.toggle('gx-off', op[i] === 0);
+  });
+  if (unfold) void track.offsetWidth;
+  els.forEach((el, i) => {
+    if (i >= n) return;
+    if (unfold) el.style.transition = '';
+    el.style.transform = el.__to[0];
+    el.style.opacity = String(el.__to[1]);
+  });
+  const [gl, gr] = row.querySelectorAll('.gx-gap');
+  gl.hidden = !hidL;
+  gr.hidden = !hidR;
+  if (hidL) {
+    gl.style.left = `${(x[0] + L + s * 1.25) / 2}px`;
+    gl.title = `${plural(hidL, 'more step')}: ← to see them`;
+  }
+  if (hidR) {
+    gr.style.left = `${(x[n - 1] + R - s * 1.25) / 2}px`;
+    gr.title = `${plural(hidR, 'more step')}: → to see them`;
+  }
+}
+
+/** Moves the spotlight by `by` tasks, or back to the live task (by = 0). */
+function glanceMove(by) {
+  const r = S.run;
+  if (!r) return;
+  const goals = r.goals;
+  S.gFocus = null;
+  if (!by) {
+    if (S.gSpot) S.gMoveAt = Date.now();
+    S.gSpot = null;
+  } else {
+    const live = r.currentGoal ?? goals[goals.length - 1];
+    const cur = goals.indexOf(S.gSpot ?? live);
+    const to = Math.max(0, Math.min(goals.length - 1, cur + by));
+    if (to === cur) return;
+    S.gSpot = goals[to] === live ? null : goals[to];
+    S.gMoveAt = Date.now();
+  }
+  S.gDir = by;
+  S.gSpotAt = Date.now();
+  schedule();
+}
+
+function glanceSpot(id) {
+  const r = S.run;
+  if (!r) return;
+  const live = r.currentGoal ?? r.goals[r.goals.length - 1];
+  const cur = S.gSpot ?? live;
+  if (id === cur) return;
+  S.gDir = r.goals.indexOf(id) - r.goals.indexOf(cur);
+  S.gSpot = id === live ? null : id;
+  S.gFocus = null;
+  S.gMoveAt = Date.now();
+  S.gSpotAt = Date.now();
+  schedule();
+}
+
+/** Moves the middle of the spotlight's chain by one step; with a node selected, the selection moves along. */
+function glanceStep(by) {
+  const f = S.gFocusNow;
+  if (!f) return;
+  const i = Math.max(0, Math.min(f.keys.length - 1, f.c + by));
+  S.gFocus = { goal: f.goal, key: f.keys[i] };
+  S.gSpotAt = Date.now();
+  if (S.selected) {
+    const fn = [...document.querySelectorAll('.gw-row.spot .gx-track > .fn')].find((x) => x.dataset.key === f.keys[i]);
+    if (fn) pickNode(fn);
+  }
+  schedule();
+}
+
+/** Selects a chain node (a .fn element) as a click does. */
+function pickNode(fn) {
+  const key = fn?.dataset.key ?? '';
+  const id = fn?.querySelector('[data-fnode]')?.dataset.fnode;
+  if (!id) return;
+  S.flowPick = key === 'start' || key.startsWith('end:') || key.startsWith('u:') ? key : null;
+  select(id);
+  // In Glance, the step you pick comes to the middle of the line.
+  const row = fn.closest('.gw-row');
+  if (row) {
+    S.gFocus = { goal: row.dataset.key, key };
+    S.gSpotAt = Date.now();
+  }
+  // The task's nodes (request, your messages, where each round ended) open the task's whole
+  // conversation in the panel, with that point glowing.
+  S.focus = key === 'start' ? { at: 'request' } : key.startsWith('u:') ? { at: 'msg', id: key.slice(2) } : key.startsWith('end:') ? { at: 'end', round: Number(key.slice(4)) } : null;
+}
+
+// The wheel turns one task per notch of the mouse wheel (a trackpad's small steps add up).
+$('#pathView').addEventListener(
+  'wheel',
+  (e) => {
+    if (S.view !== 'path' || S.layout !== 'glance' || e.ctrlKey) return;
+    e.preventDefault();
+    const now = Date.now();
+    S.gWheel = (now - (S.gWheelAt ?? 0) > 400 ? 0 : (S.gWheel ?? 0)) + e.deltaY;
+    S.gWheelAt = now;
+    if (Math.abs(S.gWheel) < 50 || now - (S.gStepAt ?? 0) < 40) return;
+    // One task per notch. Only a fast, sustained spin (notches under 120ms apart, several in a
+    // row) speeds up, a task more every few notches, up to 5 at a time.
+    S.gStreak = now - (S.gStepAt ?? 0) < 120 ? (S.gStreak ?? 0) + 1 : 0;
+    S.gStepAt = now;
+    const by = Math.min(5, 1 + Math.max(0, Math.floor((S.gStreak - 2) / 3)));
+    glanceMove(Math.sign(S.gWheel) * by);
+    S.gWheel = 0;
+  },
+  { passive: false },
+);
+
+// The orb's clock moves every second; nothing else is redrawn for it.
+setInterval(() => {
+  if (document.hidden || !S.run || S.view !== 'path' || S.layout !== 'glance' || !S.glanceSince) return;
+  const el = document.querySelector('#pathView .gx-time');
+  if (el) el.textContent = glanceTime(S.glanceSince);
+  // Left on another task: back to the live one after half a minute without a touch.
+  if ((S.gSpot || S.gFocus) && Date.now() - (S.gSpotAt ?? 0) > 30000) glanceMove(0);
+}, 1000);
+
 /** At most this many action marks in a capsule; the rest are a "+N" that opens the step. */
 const CAP_MAX = 12;
 const MARK_KIND = { edit: 'ed', write: 'ed', command: 'cmd', agent: 'sa' };
@@ -1683,7 +2075,11 @@ function fitToolbar() {
   const wrapped = kids.length > 1 && kids.some((el) => mid(el) > mid(kids[0]) + 10);
   tb.classList.toggle('tight', wrapped);
 }
-new ResizeObserver(() => fitToolbar()).observe($('#pane'));
+new ResizeObserver(() => {
+  fitToolbar();
+  // Glance lays the spotlight's line out in pixels: again at the new width.
+  if (S.run && S.view === 'path' && S.layout === 'glance') schedule();
+}).observe($('#pane'));
 
 function renderPath() {
   const q = pathQuery();
@@ -1733,6 +2129,10 @@ function renderPath() {
   hb.title = S.heat ? 'Token heat on: tasks and steps glow green to red by tokens used, relative to the rest of the run (H)' : 'Token heat: make tasks and steps glow green to red by tokens used (H)';
   $('#pathSearch').placeholder = files ? 'Filter files and edits' : 'Search steps, files, commands';
   requestAnimationFrame(fitToolbar);
+  const glance = S.layout === 'glance';
+  $('#tbPath').classList.toggle('tb-glance', glance);
+  if (glance) return void renderGlance(view);
+  view.__glance = false;
   if (files) {
     if (view.__flow) {
       view.__flow = false;
@@ -2746,7 +3146,7 @@ function renderActions() {
 }
 
 function setView(v) {
-  if (v === 'simple' || v === 'detailed' || v === 'files') {
+  if (v === 'glance' || v === 'simple' || v === 'detailed' || v === 'files') {
     S.layout = v;
     localStorage.setItem('lucidly.layout', v);
     v = 'path';
@@ -2847,6 +3247,7 @@ function render() {
   pane.classList.toggle('pin-ov', has && S.pinOv);
   if (!S.pinOv) $('#overview').classList.remove('compact');
   $('#tbPath').hidden = $('#pathView').hidden = !has || S.view !== 'path';
+  pane.classList.toggle('glance-on', has && S.view === 'path' && S.layout === 'glance');
   $('#tbActions').hidden = $('#actionsView').hidden = !has || S.view !== 'actions';
   if (has) {
     const top = pane.scrollTop;
@@ -3302,11 +3703,27 @@ function toggleIn(open, id, openSet, closedSet) {
   }
 }
 
+// In Glance, a double click takes you to the task or step in the Simple view.
+document.addEventListener('dblclick', (e) => {
+  const el = e.target instanceof Element && e.target.closest('#pathView .glance [data-fnode], #pathView .glance [data-gspot]');
+  if (!el) return;
+  const id = el.dataset.fnode ?? el.dataset.gspot;
+  if (!N(id)) return;
+  setView('simple');
+  select(id);
+  reveal(id);
+  S.follow = false;
+  schedule();
+  setTimeout(() => findEl(id)?.scrollIntoView({ block: 'center' }), 120);
+});
+
 document.addEventListener('click', (e) => {
   const t = e.target;
   if (!(t instanceof Element)) return;
   const on = (sel) => t.closest(sel);
   let el;
+  if (on('[data-glive]')) return void glanceMove(0);
+  if ((el = on('[data-gspot]'))) return void glanceSpot(el.dataset.gspot);
   if ((el = on('[data-copy]'))) {
     e.preventDefault();
     return void copyText(el);
@@ -3542,11 +3959,7 @@ document.addEventListener('click', (e) => {
       S.selected = null;
       return schedule();
     }
-    S.flowPick = key === 'start' || key.startsWith('end:') || key.startsWith('u:') ? key : null;
-    select(el.dataset.fnode);
-    // The task's nodes (request, your messages, where each round ended) open the task's whole
-    // conversation in the panel, with that point glowing.
-    S.focus = key === 'start' ? { at: 'request' } : key.startsWith('u:') ? { at: 'msg', id: key.slice(2) } : key.startsWith('end:') ? { at: 'end', round: Number(key.slice(4)) } : null;
+    pickNode(el.closest('.fn'));
     return;
   }
   if ((el = on('[data-ftoggle]'))) {
@@ -3781,8 +4194,19 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'f' || e.key === 'End') jumpToEnd();
-  else if (e.key === 'v') setView(S.view === 'actions' ? 'simple' : S.layout === 'simple' ? 'detailed' : S.layout === 'detailed' ? 'files' : 'actions');
+  const glance = S.run && S.view === 'path' && S.layout === 'glance';
+  if (glance && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    glanceMove(e.key === 'ArrowUp' ? -1 : 1);
+  } else if (glance && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    glanceStep(e.key === 'ArrowLeft' ? -1 : 1);
+  } else if (glance && (e.key === 'f' || e.key === 'End')) glanceMove(0);
+  else if (e.key === 'f' || e.key === 'End') jumpToEnd();
+  else if (e.key === 'v') {
+    const order = ['glance', 'simple', 'detailed', 'files', 'actions'];
+    setView(order[(order.indexOf(S.view === 'actions' ? 'actions' : S.layout) + 1) % order.length]);
+  }
   else if (e.key === 'e' && S.view === 'path') $('#expandAll').click();
   else if (e.key === '/') {
     e.preventDefault();

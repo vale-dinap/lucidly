@@ -6,6 +6,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ### Added
 
+- **Glance, a view of the run at a glance**, next to Simple: a large orb for the agent's state (working, your turn, asked you something, in trouble, quiet), and the tasks as a vertical wheel: the one in the spotlight unfolds into its steps as large shapes, the two above and below stay compressed and fade out. Turn the wheel (mouse wheel, `↑` / `↓`, or a click) to look at other tasks; it comes back to the live one by itself. Almost no text: hover for names, click for the side panel, double-click for the Simple view.
 - **A clear sign when the Lucidly server stops.** The status pill turns red ("Server stopped") and a bar under the top bar says the page no longer updates and since when. Live timers and animations stop, and keep-awake "only while working" lets go. Start `lucidly` again and the page reconnects by itself, and the warning goes.
 - **The session list refreshes itself while it's open**, so a session started in the meantime shows up straight away. Only the transcripts that changed are read again.
 - **All projects, grouped by folder.** In the session list's *All projects*, sessions sit in a folding group per project folder, with its name, session count and latest change. This project comes first and open, as do projects with a live session; *Expand all* / *Collapse all* at the top.
