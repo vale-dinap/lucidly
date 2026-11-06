@@ -3250,7 +3250,20 @@ function render() {
   pane.classList.toggle('pin-ov', has && S.pinOv);
   if (!S.pinOv) $('#overview').classList.remove('compact');
   $('#tbPath').hidden = $('#pathView').hidden = !has || S.view !== 'path';
-  pane.classList.toggle('glance-on', has && S.view === 'path' && S.layout === 'glance');
+  // Glance fits the pane and doesn't scroll: it starts from the top, whatever another view left
+  // scrolled; leaving it puts that view back where it was.
+  const glance = has && S.view === 'path' && S.layout === 'glance';
+  let back = null;
+  if (glance !== pane.classList.contains('glance-on')) {
+    if (glance) {
+      S.preGlanceTop = pane.scrollTop;
+      pane.scrollTop = 0;
+    } else {
+      back = S.preGlanceTop;
+      S.preGlanceTop = null;
+    }
+  }
+  pane.classList.toggle('glance-on', glance);
   $('#tbActions').hidden = $('#actionsView').hidden = !has || S.view !== 'actions';
   if (has) {
     const top = pane.scrollTop;
@@ -3258,7 +3271,7 @@ function render() {
     renderOverview();
     if (S.view === 'path') renderPath();
     else renderActions();
-    pane.scrollTop = top;
+    pane.scrollTop = back ?? top;
   }
   renderDetail();
   syncAnimations();
