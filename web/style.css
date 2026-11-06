@@ -1,6 +1,6 @@
 /* Lucidly — quiet surfaces, color only for meaning. */
 :root {
-  --bg: #f7f7f8;
+  --bg: #f3f3f5;
   --surface: #ffffff;
   --sunken: #f2f2f4;
   --hover: #f4f4f6;
@@ -960,7 +960,11 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .heat-btn { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--r); color: var(--faint); }
 .heat-btn.on { color: #f5772e; border-color: color-mix(in srgb, #f5772e 55%, var(--border)); background: color-mix(in srgb, #f5772e 12%, var(--surface)); }
 .heat-btn.on svg { fill: color-mix(in srgb, #f5772e 35%, transparent); }
-.heat-on [style*='--heat'] { --glow: color-mix(in srgb, var(--heat) calc(var(--heat-a) * 100%), transparent); }
+/* The colour from the hue the page sets (--heat-h): on the light theme darker and stronger, so
+   green and yellow still show on white; glows are light, and pale ones wash out there. */
+[style*='--heat-h'] { --heat: hsl(var(--heat-h) 95% 41%); --heat-k: 1.2; }
+:root[data-theme='dark'] [style*='--heat-h'] { --heat: hsl(var(--heat-h) 100% 50%); --heat-k: 1; }
+.heat-on [style*='--heat'] { --glow: color-mix(in srgb, var(--heat) calc(min(1, var(--heat-a) * var(--heat-k)) * 100%), transparent); }
 /* task nodes and dots: blur only (no solid ring), so it reads as a glow rather than an outline */
 .heat-on .fg-n[style*='--heat'], .heat-on .tstat[style*='--heat'] { box-shadow: 0 0 7px -1px var(--glow), 0 0 16px 2px color-mix(in srgb, var(--glow) 60%, transparent); }
 /* step dots: the dot is the ::before; a running step keeps its own pulsing ring */
@@ -1087,7 +1091,6 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gx-track > .fn.gx-off { pointer-events: none; }
 .glance .fn.start { position: absolute; z-index: auto; background: none; box-shadow: none; }
 .glance .fn-s, .glance .fn .shp { width: var(--sz); height: var(--sz); }
-.glance .fn-s { background: var(--bg); border-radius: 30%; }
 .glance .fn .gl { width: calc(var(--sz) * 0.4); height: calc(var(--sz) * 0.4); stroke-width: 1.8; }
 .glance .fn.mid .gl { width: calc(var(--sz) * 0.3); height: calc(var(--sz) * 0.3); }
 .glance .fn .sh { stroke-width: 1.5; }
@@ -1110,6 +1113,11 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gw-row.d2 { opacity: 0.2; }
 .gw-row:not(.spot):hover { opacity: 0.9; }
 .gw-row.spot .gw-c, .gw-row:not(.spot) .gx-track { display: none; }
+/* The spotlight task's own heat, kept where its node was before it unfolded: a soft disc on the
+   spine, behind the step in the middle (which glows on its own on top). */
+.gx-halo { position: absolute; left: 50%; top: 50%; width: 124px; height: 124px; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity 0.5s; }
+.heat-on .gw-row.spot .gx-halo[style*='--heat'] { opacity: 1; background: radial-gradient(circle closest-side, color-mix(in srgb, var(--heat) calc(var(--heat-a) * var(--heat-k) * 26%), transparent) 35%, transparent); }
+.gw-row > .gx-track, .gw-row > .gw-c { position: relative; }
 /* The spotlight row keeps its unfolded height while the wheel turns, so nothing below it moves. */
 .gw-row.d0 { height: 88px; justify-content: center; }
 .gw-n { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; transition: transform 0.2s; }

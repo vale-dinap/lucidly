@@ -347,12 +347,20 @@ function computeHeat() {
   return heat;
 }
 
-/** Inline style for a glowing element: its colour from green (few tokens) to red (most). */
-function heatStyle(id) {
+/**
+ * A glowing element's heat, as CSS variables: its hue from green (few tokens) to red (most) and
+ * its strength. The colour itself (--heat) is made in the CSS, darker on the light theme.
+ */
+function heatVars(id) {
   const h = S.heatMap?.get(id);
   if (!h) return '';
-  const hue = Math.round(120 * (1 - h.v));
-  return ` style="--heat:hsl(${hue} 100% 50%);--heat-a:${(0.5 + 0.45 * h.v).toFixed(2)}"`;
+  return `--heat-h:${Math.round(120 * (1 - h.v))};--heat-a:${(0.5 + 0.45 * h.v).toFixed(2)}`;
+}
+
+/** Inline style for a glowing element. */
+function heatStyle(id) {
+  const v = heatVars(id);
+  return v ? ` style="${v}"` : '';
 }
 const heatTip = (id) => {
   const h = S.heatMap?.get(id);
@@ -1477,7 +1485,7 @@ function renderGlance(view) {
       <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div></div>
       <div class="gx-title"></div>
       <div class="gx-wheel"></div>
-      <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>F</kbd> back to now</div>
+      <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>Enter</kbd> select · <kbd>F</kbd> back to now</div>
     </div>`;
     view.__glance = true;
     view.__flow = false;
@@ -1567,7 +1575,7 @@ function renderGlance(view) {
     if (fresh) {
       el = document.createElement('div');
       el.dataset.key = key;
-      if (g) el.innerHTML = '<div class="gw-c"></div><div class="gx-track"></div><div class="gx-gaps"><span class="gx-gap l" hidden></span><span class="gx-gap r" hidden></span></div>';
+      if (g) el.innerHTML = '<div class="gx-halo" aria-hidden="true"></div><div class="gw-c"></div><div class="gx-track"></div><div class="gx-gaps"><span class="gx-gap l" hidden></span><span class="gx-gap r" hidden></span></div>';
     } else old.delete(key);
     const open = d === 0 && settled;
     const wasOpen = el.classList.contains('spot');
@@ -1609,13 +1617,17 @@ function glanceRow(el, g, open, unfold) {
   const un = unresolvedOf(g);
   const tip = [g.title, [qa ? 'Question' : plural(kids(g).filter((c) => c.type === 'step').length, 'step'), un ? `${un} failed` : '', ago(g.startedAt)].filter(Boolean).join(' · ')].join('\n');
   const node = `<button type="button" class="gw-n" data-gspot="${g.id}" title="${esc(tip + heatTip(g.id))}" aria-label="${esc(g.title)}"><span class="fg-n st-${head.st}"${heatStyle(g.id)}>${head.st === 'qa' ? glyphSvg('ask') : head.st === 'done' ? glyphSvg('check') : head.st === 'wait' ? glyphSvg('pause') : ''}${un ? '<span class="fn-b bad">!</span>' : ''}</span></button>`;
-  const c = el.firstChild;
+  // The task's own heat, behind its row of steps (each step glows on its own on top).
+  const halo = el.querySelector('.gx-halo');
+  const hv = heatVars(g.id);
+  if ((halo.getAttribute('style') ?? '') !== hv) halo.setAttribute('style', hv);
+  const c = el.querySelector('.gw-c');
   if (c.__html !== node) {
     c.innerHTML = node;
     c.__html = node;
   }
   if (!open) return;
-  const track = el.children[1];
+  const track = el.querySelector('.gx-track');
   const items = chainItems(g, '')
     .filter((it) => it.st !== 'cap')
     .map((it) => ({ ...it, cls: it.cls.replace(' dim', '') }));
@@ -1629,7 +1641,7 @@ function glanceRow(el, g, open, unfold) {
  * the steps between fading with distance. Steps that don't fit leave a dotted gap.
  */
 function placeChain(row, g, items, unfold) {
-  const track = row.children[1];
+  const track = row.querySelector('.gx-track');
   const els = [...track.children].filter((x) => !x.__leaving);
   const n = items.length;
   if (!n) return;
@@ -1764,6 +1776,20 @@ function glanceStep(by) {
     const fn = [...document.querySelectorAll('.gw-row.spot .gx-track > .fn')].find((x) => x.dataset.key === f.keys[i]);
     if (fn) pickNode(fn);
   }
+  schedule();
+}
+
+/** Enter / Space in Glance: selects the node in the middle of the spotlight, or clears it if it's selected. */
+function glanceToggle() {
+  const mid = document.querySelector('.gw-row.spot .gx-track > .fn.gx-mid');
+  if (!mid) return;
+  if (mid.classList.contains('sel')) {
+    S.follow = false;
+    S.selected = null;
+    S.focus = null;
+    S.gAutoSel = null;
+    S.gPrevSel = null;
+  } else pickNode(mid);
   schedule();
 }
 
@@ -4222,6 +4248,9 @@ document.addEventListener('keydown', (e) => {
   } else if (glance && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault();
     glanceStep(e.key === 'ArrowLeft' ? -1 : 1);
+  } else if (glance && (e.key === 'Enter' || e.key === ' ') && !e.target.closest?.('.toolbar, #detail, dialog, header')) {
+    e.preventDefault();
+    glanceToggle();
   } else if (glance && (e.key === 'f' || e.key === 'End')) glanceMove(0);
   else if (e.key === 'f' || e.key === 'End') jumpToEnd();
   else if (e.key === 'v') {
