@@ -1126,6 +1126,10 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gx-track { --slot: 88px; --sz: 52px; position: relative; width: 100%; height: var(--sz); }
 .gx-track > .fn { position: absolute; left: 0; top: 0; width: var(--slot); gap: 0; transition: transform 0.5s cubic-bezier(0.2, 0.75, 0.3, 1), opacity 0.45s; }
 .gx-track > .fn.gx-off { pointer-events: none; }
+/* A step that just appeared pops in on its spot (see placeChain). */
+.gx-track > .fn.gx-new .fn-s { animation: fn-pop 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.gx-track > .fn.gx-new .fn-l { animation: gx-fade-in 0.45s ease-out both; }
+@keyframes gx-fade-in { from { opacity: 0; } }
 .glance .fn.start { position: absolute; z-index: auto; background: none; box-shadow: none; }
 .glance .fn-s, .glance .fn .shp { width: var(--sz); height: var(--sz); }
 .glance .fn .gl { width: calc(var(--sz) * 0.4); height: calc(var(--sz) * 0.4); stroke-width: 1.8; }
@@ -1176,5 +1180,6 @@ pre .dh { color: var(--faint); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   .gx-orb::before, .gx-orb.swap svg, .gx-ask { animation: none !important; }
   .gx-track > .fn { transition: none; }
+  .gx-track > .fn.gx-new .fn-s, .gx-track > .fn.gx-new .fn-l { animation: none; }
 }
 

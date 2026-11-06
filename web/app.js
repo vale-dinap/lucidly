@@ -1705,7 +1705,9 @@ function placeChain(row, g, items, unfold) {
     x.push(xi);
     op.push(o);
   }
-  // Hidden nodes wait at the gap, so they slide in from there.
+  // Hidden nodes wait at the gap, so they slide in from there. A step that just appeared starts
+  // on its own spot and pops in there, while the others slide aside to make room for it.
+  let fresh = false;
   els.forEach((el, i) => {
     if (i >= n) return;
     const to = `translateX(${Math.round(x[i] - s / 2)}px)`;
@@ -1713,17 +1715,25 @@ function placeChain(row, g, items, unfold) {
       el.style.transition = 'none';
       el.style.transform = `translateX(${Math.round(mid - s / 2)}px)`;
       el.style.opacity = '0';
+    } else if (!el.__placed) {
+      el.style.transition = 'none';
+      el.style.transform = to;
+      el.style.opacity = String(op[i]);
+      el.classList.add('gx-new');
+      el.addEventListener('animationend', () => el.classList.remove('gx-new'), { once: true });
+      fresh = true;
     }
     el.__to = [to, op[i]];
     el.classList.toggle('gx-mid', i === c);
     el.classList.toggle('gx-off', op[i] === 0);
   });
-  if (unfold) void track.offsetWidth;
+  if (unfold || fresh) void track.offsetWidth;
   els.forEach((el, i) => {
     if (i >= n) return;
-    if (unfold) el.style.transition = '';
+    el.style.transition = '';
     el.style.transform = el.__to[0];
     el.style.opacity = String(el.__to[1]);
+    el.__placed = true;
   });
   const [gl, gr] = row.querySelectorAll('.gx-gap');
   gl.hidden = !hidL;
