@@ -234,6 +234,12 @@ export function endsWithQuestion(text: string): boolean {
   return /\?\s*(\*+|_+|\)|")?\s*$/.test(text.trim());
 }
 
+/** The question the agent's words end with: their last sentence, without its formatting. */
+export function lastQuestion(text: string): string | undefined {
+  const q = sentences(text).at(-1);
+  return q && /\?\W*$/.test(q) ? truncate(q.replace(/(?<=\?)\W*$/, ''), 200) : undefined;
+}
+
 export function isSubstantivePrompt(text: string): boolean {
   const t = text.trim();
   const words = t.split(/\s+/).filter(Boolean).length;

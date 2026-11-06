@@ -1084,7 +1084,21 @@ pre .dh { color: var(--faint); font-weight: 600; }
 :root[data-theme='dark'] .glance { --amber: #f2c14e; }
 
 /* The orb: what the agent is doing, and whether it needs you. */
-.gx-state { --oc: var(--faint); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.gx-state { --oc: var(--faint); position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+/* A question waiting on you: a speech balloon out of the orb, quoting it. Beside the orb, so
+   nothing else moves when it comes or goes. */
+.gx-ask { position: absolute; left: calc(50% + 84px); top: 14px; width: max-content; max-width: min(360px, calc(50vw - 130px)); padding: 10px 14px 11px;
+  border: 2px solid var(--amber); border-radius: 18px; background: color-mix(in srgb, var(--amber) 10%, var(--surface)); color: var(--text);
+  font-size: 14px; line-height: 1.4; text-align: left; box-shadow: 0 10px 30px -14px color-mix(in srgb, var(--amber) 70%, transparent);
+  transform-origin: left center; animation: gx-ask-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1); }
+.gx-ask[hidden] { display: none; }
+.gx-ask small { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); }
+.gx-ask span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* The tail, pointing at the orb: an amber triangle, and a filled one inside it. */
+.gx-ask::before, .gx-ask::after { content: ''; position: absolute; top: 30px; border-style: solid; border-color: transparent; }
+.gx-ask::before { left: -15px; border-width: 8px 15px 8px 0; border-right-color: var(--amber); }
+.gx-ask::after { left: -10px; top: 32px; border-width: 6px 11px 6px 0; border-right-color: color-mix(in srgb, var(--amber) 10%, var(--surface)); }
+@keyframes gx-ask-in { from { opacity: 0; transform: scale(0.6) translateX(-12px); } }
 .gx-state.work { --oc: var(--accent); }
 .gx-state.you { --oc: var(--amber); }
 .gx-state.bad { --oc: var(--bad); }
@@ -1160,7 +1174,7 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gx-state.away .gx-orb { opacity: 0.8; }
 .gx-state.away .gx-orb:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .gx-orb::before, .gx-orb.swap svg { animation: none !important; }
+  .gx-orb::before, .gx-orb.swap svg, .gx-ask { animation: none !important; }
   .gx-track > .fn { transition: none; }
 }
 

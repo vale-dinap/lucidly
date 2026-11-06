@@ -469,8 +469,10 @@ test('a task whose turn ended with a question is marked asked, until you reply',
   const e = new Engine();
   e.applyAll([prompt('Plan a new view for the run at a glance, then wait'), text('Here is the plan. Shall I go ahead?'), { type: 'turn.end' }]);
   assert.equal(goal(e).asked, true);
+  assert.equal(goal(e).question, 'Shall I go ahead?');
   e.apply(prompt('yes'));
   assert.equal(goal(e).asked, undefined);
+  assert.equal(goal(e).question, undefined);
   e.applyAll([text('Done: the view is in.'), { type: 'turn.end' }]);
   assert.equal(goal(e).asked, undefined);
 });

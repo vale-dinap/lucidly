@@ -13,7 +13,7 @@ const PATHS = {
   search: 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14z M16 16l4 4',
   web: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18',
   agent: 'M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z',
-  ask: 'M9 9a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.6V14 M12 18h.01',
+  ask: 'M12 4.5c4.7 0 8.5 2.9 8.5 6.5s-3.8 6.5-8.5 6.5c-.9 0-1.8-.1-2.6-.3L5.5 19.5l1-3.3C4.6 15 3.5 13.1 3.5 11c0-3.6 3.8-6.5 8.5-6.5z',
   user: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M4 20c1.5-4 4.5-5 8-5s6.5 1 8 5',
   other: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z',
   issue: 'M12 3l9 16H3z M12 10v4 M12 17h.01',
@@ -1290,7 +1290,9 @@ const GLYPH = {
   end: 'M6 21V4h11l-2.5 3.5L17 11H6',
   // Intermediate goals: a round that ended done, with a question, or interrupted.
   mid: 'M6.5 12.5l3.5 3.5 7.5-8',
-  'mid-ask': 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17.5v.01',
+  'mid-ask': 'M12 7c3.3 0 6 2 6 4.6s-2.7 4.6-6 4.6c-.6 0-1.3-.1-1.9-.2L7.5 17.5l.7-2.3C6.8 14.3 6 13 6 11.6 6 9 8.7 7 12 7z',
+  // Inside a question's speech-balloon node: the balloon's words.
+  talk: 'M8.5 11h.01 M12 11h.01 M15.5 11h.01',
   'mid-wait': 'M10 8v8 M14 8v8',
   check: 'M5 12.5l4.5 4.5L19 7',
   pause: 'M9 6v12 M15 6v12',
@@ -1351,7 +1353,7 @@ function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
     key,
     st,
     cls: `fn k-${kind} st-${st}${sel}${extra}`,
-    html: `<i class="fl"></i><button type="button" class="fn-s" data-fnode="${id}" data-node="${key.startsWith('s:') ? id : ''}" title="${esc(tip + (key.startsWith('s:') || key.startsWith('w:') ? heatTip(id) : ''))}" aria-label="${esc(tip)}"${key.startsWith('s:') || key.startsWith('w:') ? heatStyle(id) : ''}><svg class="shp" viewBox="0 0 36 36" aria-hidden="true">${SHAPE[kind]}</svg>${glyphSvg(kind)}${badge}</button><span class="fn-l">${esc(label)}</span>`,
+    html: `<i class="fl"></i><button type="button" class="fn-s" data-fnode="${id}" data-node="${key.startsWith('s:') ? id : ''}" title="${esc(tip + (key.startsWith('s:') || key.startsWith('w:') ? heatTip(id) : ''))}" aria-label="${esc(tip)}"${key.startsWith('s:') || key.startsWith('w:') ? heatStyle(id) : ''}><svg class="shp" viewBox="0 0 36 36" aria-hidden="true">${SHAPE[kind]}</svg>${glyphSvg(kind === 'ask' ? 'talk' : kind)}${badge}</button><span class="fn-l">${esc(label)}</span>`,
   };
 }
 
@@ -1440,7 +1442,7 @@ const GLANCE_GLYPH = {
   quiet: 'M7.5 12h.01 M12 12h.01 M16.5 12h.01',
   done: GLYPH.check,
   pause: GLYPH.pause,
-  ask: 'M9 9.2a3 3 0 1 1 4.2 2.8c-.7.3-1.2 1-1.2 1.8v.7 M12 17.6v.01',
+  ask: PATHS.ask,
 };
 // What the agent is doing now, from the kind of its latest action.
 const DOING = { edit: 'edit', write: 'edit', command: 'command', read: 'read', search: 'read', web: 'read', agent: 'agent', ask: 'ask' };
@@ -1460,11 +1462,13 @@ function glanceState() {
     return { st: 'work', path: GLYPH[kind], tip: `Working: ${KIND_LABEL[kind] ?? 'reading'} now`, since: turnStart(g) };
   }
   if (g?.status === 'waiting') return { st: 'off', path: GLANCE_GLYPH.pause, tip: 'Interrupted', since: r.updatedAt, ago: true };
-  const asking = g ? descendants(g, isAct).some((a) => a.kind === 'ask' && a.status === 'active') : false;
-  const asked = asking || !!g?.asked;
+  // A question waiting on you is amber, and quoted in a balloon next to the orb: the agent's
+  // question tool, still open, or a turn whose last words were a question. It stays until you answer.
+  const open = g ? descendants(g, isAct).find((a) => a.kind === 'ask' && a.status === 'active') : null;
+  const question = open ? String(open.title ?? '').replace(/^Ask:\s*/, '') : g?.asked ? (g.question ?? '') : null;
+  if (question !== null) return { st: 'you', path: GLANCE_GLYPH.ask, tip: `Your turn: the agent asked you${question ? `: ${question}` : ' something'}`, since: r.updatedAt, ago: true, ask: question };
   const recent = !!r.updatedAt && Date.now() - Date.parse(r.updatedAt) < 30 * 60 * 1000;
-  // A question waiting on you is amber; a finished task is green (breathing while it's recent).
-  if (asked && recent) return { st: 'you', path: GLANCE_GLYPH.ask, tip: 'Your turn: the agent asked you something', since: r.updatedAt, ago: true };
+  // A finished task is green (breathing while it's recent).
   if (recent) return { st: 'done', path: GLANCE_GLYPH.done, tip: 'Your turn: the agent finished', since: r.updatedAt, ago: true };
   return { st: 'rest', path: GLANCE_GLYPH.done, tip: `Finished, ${ago(r.updatedAt)}`, since: r.updatedAt, ago: true };
 }
@@ -1482,7 +1486,7 @@ const glanceTime = (s) => (s.ago ? ago(s.since) : dur(s.since));
 function renderGlance(view) {
   if (!view.__glance) {
     view.innerHTML = `<div class="glance">
-      <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div></div>
+      <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div><div class="gx-ask" hidden><small>Waiting for your answer</small><span></span></div></div>
       <div class="gx-title"></div>
       <div class="gx-wheel"></div>
       <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>Enter</kbd> toggle selection · <kbd>F</kbd> back to now</div>
@@ -1553,6 +1557,11 @@ function renderGlance(view) {
   orb.setAttribute('aria-label', tip);
   S.glanceSince = s;
   root.querySelector('.gx-time').textContent = glanceTime(s);
+  const ask = state.querySelector('.gx-ask');
+  const q = s.ask ?? null;
+  if (ask.hidden !== (q === null)) ask.hidden = q === null;
+  const words = q || 'The agent asked you something.';
+  if (q !== null && ask.lastChild.textContent !== words) ask.lastChild.textContent = words;
   const title = root.querySelector('.gx-title');
   const t = spot ? spot.title : '';
   if (title.textContent !== t) title.textContent = t;

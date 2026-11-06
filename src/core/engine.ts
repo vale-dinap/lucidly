@@ -23,6 +23,7 @@ import {
   isHousekeeping,
   isReply,
   endsWithQuestion,
+  lastQuestion,
   issueSummary,
   matchStep,
   sentences,
@@ -89,6 +90,8 @@ export class Engine {
   private seq = 0;
   /** The main agent's last words asked the user something. */
   private agentAsked = false;
+  /** ...and the question itself. */
+  private agentQuestion: string | undefined;
   private goalCtx = new Map<string, GoalCtx>();
   private units = new Map<string, UnitCtx>();
   private calls = new Map<string, CallRef>();
@@ -528,6 +531,7 @@ export class Engine {
     this.userNode(g, text, ts, raw, { round });
     delete goal.outcome;
     delete goal.asked;
+    delete goal.question;
     this.setStatus(g.id, 'active', ts);
   }
 
@@ -570,7 +574,10 @@ export class Engine {
 
   private onText(text: string, ts?: string, scope?: string): void {
     if (!text.trim()) return;
-    if (!scope) this.agentAsked = endsWithQuestion(text);
+    if (!scope) {
+      this.agentAsked = endsWithQuestion(text);
+      this.agentQuestion = this.agentAsked ? lastQuestion(text) : undefined;
+    }
     if (scope) {
       const n = this.scopes.get(scope);
       if (n) {
@@ -1110,8 +1117,14 @@ export class Engine {
       const isLastPlanned = g.plan.length > 0 && g.plan[g.plan.length - 1] === g.current;
       if (g.plan.length === 0 || isLastPlanned || !g.plan.includes(g.current)) this.setStatus(g.current, 'done', ts);
     }
-    if (this.agentAsked && !interrupted) goal.asked = true;
-    else delete goal.asked;
+    if (this.agentAsked && !interrupted) {
+      goal.asked = true;
+      if (this.agentQuestion) goal.question = this.agentQuestion;
+      else delete goal.question;
+    } else {
+      delete goal.asked;
+      delete goal.question;
+    }
     // The agent finished its turn: the task is done, unless it was cut short. A follow-up
     // reply reopens it (see onPrompt).
     this.setStatus(g.id, interrupted ? 'waiting' : 'done', ts);
