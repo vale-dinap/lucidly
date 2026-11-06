@@ -1455,7 +1455,9 @@ function glanceState() {
   const asking = g ? descendants(g, isAct).some((a) => a.kind === 'ask' && a.status === 'active') : false;
   const asked = asking || !!g?.asked;
   const recent = !!r.updatedAt && Date.now() - Date.parse(r.updatedAt) < 30 * 60 * 1000;
-  if (recent) return { st: 'you', path: asked ? GLANCE_GLYPH.ask : GLANCE_GLYPH.done, tip: asked ? 'Your turn: the agent asked you something' : 'Your turn: the agent finished', since: r.updatedAt, ago: true };
+  // A question waiting on you is amber; a finished task is green (breathing while it's recent).
+  if (asked && recent) return { st: 'you', path: GLANCE_GLYPH.ask, tip: 'Your turn: the agent asked you something', since: r.updatedAt, ago: true };
+  if (recent) return { st: 'done', path: GLANCE_GLYPH.done, tip: 'Your turn: the agent finished', since: r.updatedAt, ago: true };
   return { st: 'rest', path: GLANCE_GLYPH.done, tip: `Finished, ${ago(r.updatedAt)}`, since: r.updatedAt, ago: true };
 }
 
