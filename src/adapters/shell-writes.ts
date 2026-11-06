@@ -384,7 +384,10 @@ export function scriptWrites(code: string): { path: string; op: ShellWrite['op']
   for (const m of code.matchAll(PATHISH)) {
     const p = m[2];
     if (sure.has(p) || /^(?:node|npm|https?):/.test(p)) continue;
-    if (READ_ONLY.test(code.slice(Math.max(0, m.index! - 40), m.index))) continue;
+    const before = code.slice(Math.max(0, m.index! - 40), m.index);
+    // Only a value given to something (edit('a.ts', ...), ['a.ts', 'b.ts'], f = 'a.ts'), not a
+    // path quoted in text the script writes, and not one handed to a call that only reads.
+    if (!/[([,=]\s*$/.test(before) || READ_ONLY.test(before)) continue;
     if (out.some((w) => w.path === p)) continue;
     out.push({ path: p, op: 'write', guessed: true });
   }

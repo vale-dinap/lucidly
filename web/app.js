@@ -615,17 +615,16 @@ function editDiff(r) {
   return c ? inputHtml(c, N(r.id) ?? r, res) : '<div class="loading">No change recorded.</div>';
 }
 
-/** Every edit in time order, oldest first: the same file shows once per change. */
+/** Every edit in time order, newest first: the same file shows once per change. */
 function historyHtml(files, ql) {
   const inside = files.filter((f) => f.inside);
   const outside = files.filter((f) => !f.inside);
   const showOut = S.ff.outside || (ql && !inside.length);
   const pick = showOut ? files : inside.length ? inside : files;
-  const byId = new Map();
-  for (const f of pick) for (const r of f.edits) byId.set(r.id, f);
-  const edits = [...byId.keys()]
-    .map((id) => ({ r: byId.get(id).edits.find((x) => x.id === id), f: byId.get(id) }))
-    .sort((x, y) => ((x.r.startedAt ?? '') < (y.r.startedAt ?? '') ? -1 : (x.r.startedAt ?? '') > (y.r.startedAt ?? '') ? 1 : 0));
+  // One row per file and change: a command that changed several files shows under each.
+  const edits = pick
+    .flatMap((f) => f.edits.map((r) => ({ r, f })))
+    .sort((x, y) => ((x.r.startedAt ?? '') > (y.r.startedAt ?? '') ? -1 : (x.r.startedAt ?? '') < (y.r.startedAt ?? '') ? 1 : 0));
   if (!edits.length) return '<div class="no-match">No file or edit matches.</div>';
   let goal = null;
   const out = [];

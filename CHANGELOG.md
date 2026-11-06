@@ -16,6 +16,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ### Changed
 
+- **The Files view's History lists the newest change first.**
 - **`lucidly` no longer guesses which session to open.** It opens the folder's session when there's no doubt (the only one, or the only one in progress) and otherwise starts on the session list.
 
 ## [0.2.0] - 2026-11-05

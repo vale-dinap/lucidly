@@ -75,6 +75,10 @@ grep -n "startup" web/app.js; node --check web/app.js && echo ok`;
   assert.deepEqual(files(`python -c "open('out.csv', 'w').write('a')"`), ['out.csv']);
   assert.deepEqual(files(`python -c "print(open('in.csv').read())"`), []);
   assert.deepEqual(files('node scripts/build.mjs'), []);
+  // A path mentioned in the text a script writes is not one of its targets.
+  const docs = `node -e "const fs=require('fs'); fs.writeFileSync(f, s.replace('x', 'the parser in \`src/shell.ts\` reads it'))"`;
+  assert.deepEqual(files(docs), []);
+  assert.deepEqual(files(`node -e "for (const f of ['a.ts', 'b.ts']) fs.writeFileSync(f, '')"`), ['a.ts ?', 'b.ts ?']);
 });
 
 test('bash -c and powershell -Command are looked into', () => {
