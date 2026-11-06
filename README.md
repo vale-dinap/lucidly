@@ -52,6 +52,14 @@ Every item in the view, whether a planned step, a subtask or a blocker, is linke
 
 All of these show a made-up demo session (`scripts/demo-session.mjs`).
 
+**Glance**, the default view: how the agent is doing, at a glance. The orb says what it is doing now, and the task under way unfolds into its steps, from your request to the goal, with the steps still to come.
+
+![The Glance view while the agent works: the orb running a command, and the current task unfolded into its steps](docs/media/img_04_glance-view-while-the-agent-works.png)
+
+**Glance and the side panel.** Pick any step, here a subagent's, and the panel shows its files, commands and transcript, while Glance stays where it was.
+
+![The Glance view in the light theme, with a subagent step open in the side panel](docs/media/img_05_glance-with-a-subagent-step-open-light-theme.png)
+
 **Drill down.** Open a step in place to see each of its actions, hover one for what it did, and click it for its full output.
 
 https://github.com/user-attachments/assets/a8d20d0e-41c5-4ada-a9d5-b9cf6541714f
