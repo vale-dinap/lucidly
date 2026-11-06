@@ -1109,7 +1109,8 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gw-row.d2 { opacity: 0.2; }
 .gw-row:not(.spot):hover { opacity: 0.9; }
 .gw-row.spot .gw-c, .gw-row:not(.spot) .gx-track { display: none; }
-.gw-row.spot { padding: 18px 0; }
+/* The spotlight row keeps its unfolded height while the wheel turns, so nothing below it moves. */
+.gw-row.d0 { height: 88px; justify-content: center; }
 .gw-n { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; transition: transform 0.2s; }
 .gw-n:hover { transform: scale(1.12); }
 .gw-n .fg-n { width: 30px; height: 30px; }

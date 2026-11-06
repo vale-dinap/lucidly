@@ -1635,8 +1635,9 @@ function placeChain(row, g, items, unfold) {
   // The node in the middle.
   let c = S.gFocus?.goal === g.id ? keys.indexOf(S.gFocus.key) : -1;
   // By default: on a past task, your request (where it began); on the live one, the step under
-  // way, or the latest.
+  // way, its goal once it's done, or the latest step.
   if (c < 0 && g.id !== (S.run.currentGoal ?? S.run.goals[S.run.goals.length - 1])) c = 0;
+  if (c < 0 && (g.status === 'done' || g.status === 'failed')) c = n - 1;
   if (c < 0) {
     for (let i = n - 1; i >= 0 && c < 0; i--) if (items[i].st === 'live' || items[i].st === 'idle' || items[i].st === 'bad') c = i;
     if (c < 0) c = Math.max(0, n - 2);
