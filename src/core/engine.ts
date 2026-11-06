@@ -527,6 +527,7 @@ export class Engine {
     g.interrupted = false;
     this.userNode(g, text, ts, raw, { round });
     delete goal.outcome;
+    delete goal.asked;
     this.setStatus(g.id, 'active', ts);
   }
 
@@ -1109,6 +1110,8 @@ export class Engine {
       const isLastPlanned = g.plan.length > 0 && g.plan[g.plan.length - 1] === g.current;
       if (g.plan.length === 0 || isLastPlanned || !g.plan.includes(g.current)) this.setStatus(g.current, 'done', ts);
     }
+    if (this.agentAsked && !interrupted) goal.asked = true;
+    else delete goal.asked;
     // The agent finished its turn: the task is done, unless it was cut short. A follow-up
     // reply reopens it (see onPrompt).
     this.setStatus(g.id, interrupted ? 'waiting' : 'done', ts);

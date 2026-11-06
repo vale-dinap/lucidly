@@ -464,3 +464,13 @@ test('work after a mid-turn message goes into a new step, unless a plan step is 
   assert.deepEqual(pk.map((n) => (n.type === 'step' ? n.title : n.kind)), ['One', 'user', 'Two']);
   assert.equal(pk[0].children.length, 2, 'the plan step under way keeps its work');
 });
+
+test('a task whose turn ended with a question is marked asked, until you reply', () => {
+  const e = new Engine();
+  e.applyAll([prompt('Plan a new view for the run at a glance, then wait'), text('Here is the plan. Shall I go ahead?'), { type: 'turn.end' }]);
+  assert.equal(goal(e).asked, true);
+  e.apply(prompt('yes'));
+  assert.equal(goal(e).asked, undefined);
+  e.applyAll([text('Done: the view is in.'), { type: 'turn.end' }]);
+  assert.equal(goal(e).asked, undefined);
+});

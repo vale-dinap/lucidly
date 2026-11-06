@@ -67,6 +67,8 @@ export interface ViewNode {
    * this is how the round before it ended (its result, interrupted, or with a question).
    */
   round?: { outcome?: string; interrupted?: boolean; asked?: boolean };
+  /** On a task whose turn ended with the agent asking you something (its last words a question). */
+  asked?: boolean;
   retry?: boolean;
   /** A failed action that something succeeded after, in the same unit or one nested in it. */
   recovered?: boolean;
