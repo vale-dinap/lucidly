@@ -61,6 +61,10 @@ const S = {
   openActs: new Set(),
   closedActs: new Set(),
   fullPre: new Set(),
+  /** Commands shown whole instead of in parts (shell lines, script, written content). */
+  wholeCmd: new Set(),
+  /** Script blocks shown reformatted, by block key. */
+  reformat: new Set(),
   closedSecs: new Set(),
   // actions view
   actions: null,
@@ -1812,7 +1816,7 @@ function invalidateRaw(id) {
  */
 const UNIFIED = /^(?:diff --git |@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@|--- a\/|\+\+\+ b\/)/m;
 function diffHtml(text, mode) {
-  if (mode === 'shell' || mode === 'python') return highlight(text, mode);
+  if (mode === 'shell' || mode === 'python' || mode === 'javascript') return highlight(text, mode);
   const unified = mode !== 'edit' && UNIFIED.test(text);
   if (mode !== 'edit' && !unified) return esc(text);
   return String(text)
@@ -1834,11 +1838,101 @@ function preBlock(key, label, text, cls = '', mode = 'auto') {
   const LIMIT = 16;
   const full = S.fullPre.has(key) || lines.length <= LIMIT;
   const shown = full ? text : lines.slice(0, LIMIT).join('\n');
-  const body = cls.includes('failed') ? esc(shown) : diffHtml(shown, mode);
+  let body = cls.includes('failed') ? esc(shown) : diffHtml(shown, mode);
+  if (cls.includes('hang')) body = hangLines(body);
   return `<div class="pl">${esc(label)}</div><pre class="${cls}">${body}</pre>${
     full ? '' : `<button class="show-all" data-full="${esc(key)}">Show all ${lines.length} lines</button>`
   }`;
 }
+
+/**
+ * Highlighted HTML as one block per line, for a hanging indent: a long line that wraps continues
+ * indented, so each real line stands out. Colour spans open across a line break are closed at its
+ * end and opened again on the next line.
+ */
+function hangLines(html) {
+  const out = [];
+  let open = [];
+  let line = '';
+  for (const m of String(html).matchAll(/<span[^>]*>|<\/span>|\n|[^<\n]+|</g)) {
+    const t = m[0];
+    if (t === '\n') {
+      out.push(line + '</span>'.repeat(open.length));
+      line = open.join('');
+    } else {
+      if (t.startsWith('<span')) open.push(t);
+      else if (t === '</span>') open = open.slice(0, -1);
+      line += t;
+    }
+  }
+  out.push(line);
+  return out.map((l) => `<span class="ln">${l || ' '}</span>`).join('');
+}
+
+/**
+ * Dense JavaScript laid out for reading: a line break after `{`, `;` and `}`, indented by brace
+ * depth. Display only (the code itself is shown as written next to it), so it stays simple:
+ * strings, template literals, comments and regex literals are kept whole; everything else is
+ * left as it is.
+ */
+function reformatJs(code) {
+  const re = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:\\.|[^'\\\n])*'?|"(?:\\.|[^"\\\n])*"?|`(?:\\[\s\S]|[^`\\])*`?)|(\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[a-z]*)|([{}();\n])|([^'"`/{}();\n]+|\/)/g;
+  let out = '';
+  let depth = 0;
+  let parens = 0;
+  let prevSig = '';
+  const nl = () => {
+    out = out.replace(/[ \t]+$/, '');
+    if (out && !out.endsWith('\n')) out += '\n';
+  };
+  const put = (t) => {
+    if (out.endsWith('\n') || !out) t = '  '.repeat(Math.max(0, depth)) + t.replace(/^\s+/, '');
+    out += t;
+  };
+  for (const m of code.matchAll(re)) {
+    const [t, com, str, rx, punct, other] = m;
+    if (rx !== undefined && !/[\w$)\]]$/.test(prevSig)) {
+      // A regex literal where a value is expected; after a value, '/' is division.
+      put(t);
+      prevSig = t;
+      continue;
+    }
+    if (com !== undefined || str !== undefined) {
+      put(t);
+      if (com?.startsWith('//')) nl();
+      prevSig = t;
+      continue;
+    }
+    const p = punct;
+    if (p === '\n') {
+      nl();
+      continue;
+    }
+    if (p === '(') parens++;
+    if (p === ')') parens = Math.max(0, parens - 1);
+    if (p === '{') {
+      put('{');
+      depth++;
+      nl();
+    } else if (p === '}') {
+      depth = Math.max(0, depth - 1);
+      nl();
+      put('}');
+      // `} else`, `});`, `},` stay on the line; anything else starts a new one.
+      const rest = code.slice(m.index + 1).match(/^\s*(\S)/)?.[1] ?? '';
+      if (!/[;,)\].]/.test(rest) && !/^\s*(?:else|catch|finally|while)\b/.test(code.slice(m.index + 1))) nl();
+    } else if (p === ';') {
+      put(';');
+      if (!parens) nl();
+    } else if (p) put(p);
+    else put(rx !== undefined ? t : other ?? t);
+    if (t.trim()) prevSig = t.trim();
+  }
+  return out.replace(/\n+$/, '');
+}
+
+/** Code dense enough to be worth reformatting: some line over 100 characters. */
+const isDense = (code) => String(code).split('\n').some((l) => l.length > 100);
 
 function scopeOf(nodeId, rootId) {
   // nearest subtask/blocker between the chunk's node and the selected root
@@ -1964,7 +2058,57 @@ function langOf(path) {
   const ext = /\.([A-Za-z0-9]+)$/.exec(String(path ?? ''))?.[1]?.toLowerCase();
   return ext === 'py' || ext === 'pyw' || ext === 'pyi' ? 'python' : ext === 'sh' || ext === 'bash' || ext === 'zsh' || ext === 'ps1' ? 'shell' : null;
 }
-const highlight = (code, lang) => (lang === 'python' ? hlPython(code) : lang === 'shell' ? hlShell(code) : esc(code));
+const highlight = (code, lang) => (lang === 'python' ? hlPython(code) : lang === 'shell' ? hlShell(code) : lang === 'javascript' ? hlJs(code) : esc(code));
+
+/**
+ * Language of a script or of content a command writes. Wider than langOf, which also drives the
+ * line-by-line diff colouring: there, multi-line JavaScript comments and template strings would
+ * be coloured wrongly, so JavaScript stays out of diffs for now.
+ */
+function scriptLang(path) {
+  const lang = langOf(path);
+  if (lang) return lang;
+  const ext = /\.([A-Za-z0-9]+)$/.exec(String(path ?? ''))?.[1]?.toLowerCase();
+  return ['js', 'mjs', 'cjs', 'jsx', 'ts', 'mts', 'cts', 'tsx', 'json'].includes(ext) ? 'javascript' : null;
+}
+const LANG_NAMES = { javascript: 'JavaScript', python: 'Python', shell: 'Shell' };
+
+const JS_KW = new Set(
+  'break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof let new of return static super switch this throw try typeof var void while with yield async await as interface type enum implements declare readonly public private protected abstract keyof satisfies'.split(' '),
+);
+const JS_BI = new Set(
+  'true false null undefined NaN Infinity console require module exports process JSON Math Object Array Promise Map Set String Number Boolean Error RegExp Date Symbol Buffer globalThis window document'.split(' '),
+);
+
+/**
+ * JavaScript / TypeScript (and JSON): comments, strings (template literals whole, ${} included),
+ * numbers, keywords, built-ins, and the names after function / class. Regex literals are not
+ * recognized (telling them from division needs a parser): they show as plain text.
+ */
+function hlJs(code) {
+  const re = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:\\.|[^'\\\n])*'?|"(?:\\.|[^"\\\n])*"?|`(?:\\[\s\S]|[^`\\])*`?)|(\b(?:0[xXbBoO][\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?n?)\b)|([A-Za-z_$][\w$]*)/g;
+  let out = '';
+  let last = 0;
+  let prev = '';
+  for (let m; (m = re.exec(code)); ) {
+    out += esc(code.slice(last, m.index));
+    last = re.lastIndex;
+    const [t, com, str, num, word] = m;
+    if (com) out += span('c', t);
+    else if (str) out += span('s', t);
+    else if (num) out += span('n', t);
+    else if (word) {
+      if (prev === 'function' || prev === 'class') out += span('f', t);
+      else if (JS_KW.has(t)) out += span('k', t);
+      else if (JS_BI.has(t)) out += span('b', t);
+      else out += esc(t);
+      prev = t;
+      continue;
+    }
+    prev = '';
+  }
+  return out + esc(code.slice(last));
+}
 
 // ───────────────────────────── diffs (GitHub-style)
 /** Line diff of two texts (longest common subsequence) → rows of context / removed / added. */
@@ -2152,12 +2296,45 @@ function transcriptHtml(rootId, chunks) {
   return out.join('');
 }
 
+/**
+ * A shell command. A long one comes in parts, from the server: its shell lines, a script it runs
+ * (highlighted in its language), content it writes to a file, other text it feeds a command. The
+ * whole command, as recorded, is one click away.
+ */
+function commandHtml(c, n) {
+  const key = `${c.node}:in`;
+  const parts = Array.isArray(c.parts) && c.parts.length ? c.parts : null;
+  // Commands that change files get a hanging indent, and dense JavaScript can be reformatted.
+  const edits = n?.via === 'command';
+  const hang = edits ? 'hang' : '';
+  const toggle = (label) => `<button class="show-all" data-wholecmd="${esc(c.node)}">${label}</button>`;
+  if (!parts || S.wholeCmd.has(c.node)) return preBlock(key, 'Command', c.text, hang, 'shell') + (parts ? toggle('Show in parts') : '');
+  const prompt = /^PS>/.test(c.text) ? 'PS> ' : '$ ';
+  let shells = 0;
+  const code = (k, label, text, lang) => {
+    if (!edits || lang !== 'javascript' || !isDense(text)) return preBlock(k, label, text, hang, lang);
+    const on = S.reformat.has(k);
+    return (
+      preBlock(k, on ? `${label} · reformatted` : label, on ? reformatJs(text) : text, hang, lang) +
+      `<button class="show-all" data-reformat="${esc(k)}">${on ? 'Show as written' : 'Reformat for reading'}</button>`
+    );
+  };
+  const html = parts.map((p, i) => {
+    const k = `${key}:${i}`;
+    if (p.kind === 'shell') return preBlock(k, shells++ ? 'Then' : 'Command', (shells === 1 ? prompt : '') + p.text, hang, 'shell');
+    if (p.kind === 'script') return code(k, `Script${LANG_NAMES[p.lang] ? ` · ${LANG_NAMES[p.lang]}` : p.lang ? ` · ${p.lang}` : ''}`, p.text, p.lang);
+    if (p.kind === 'content') return code(k, `Written to ${relPath(p.file)}`, p.text, scriptLang(p.file) ?? '');
+    return preBlock(k, 'Input', p.text, hang, '');
+  });
+  return html.join('') + toggle('Show the whole command');
+}
+
 /** An action's input: a diff for file changes, the command or raw input otherwise. */
 function inputHtml(c, n, result) {
   const file = n.files?.[0] ?? String(c.text).split('\n')[0].replace(/^(?:Edit|Write)\s+/, '');
   if (result?.patch?.length && !result.failed) return diffView(`${c.node}:diff`, file, markWords(rowsFromPatch(result.patch)), true);
   // Changed by a shell command: the transcript has the command, not the change.
-  if (n.via === 'command' || n.kind === 'command') return preBlock(`${c.node}:in`, 'Command', c.text, '', 'shell');
+  if (n.via === 'command' || n.kind === 'command') return commandHtml(c, n);
   if (n.kind === 'edit') return diffView(`${c.node}:diff`, file, markWords(rowsFromInput(c.text)), false);
   if (n.kind === 'write' && langOf(file)) {
     const body = String(c.text).split('\n').slice(2).join('\n'); // drop the "Write <file>" header
@@ -3116,6 +3293,18 @@ document.addEventListener('click', (e) => {
   if ((el = on('[data-full]'))) {
     S.fullPre.add(el.dataset.full);
     return renderDetail();
+  }
+  if ((el = on('[data-reformat]'))) {
+    const k = el.dataset.reformat;
+    if (!S.reformat.delete(k)) S.reformat.add(k);
+    renderDetail();
+    return schedule();
+  }
+  if ((el = on('[data-wholecmd]'))) {
+    const id = el.dataset.wholecmd;
+    if (!S.wholeCmd.delete(id)) S.wholeCmd.add(id);
+    renderDetail();
+    return schedule();
   }
   if ((el = on('[data-allacts]'))) {
     S.allActs.add(el.dataset.allacts);

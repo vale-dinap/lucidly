@@ -420,6 +420,8 @@ details.ev-think > div { color: var(--muted); white-space: pre-wrap; font-size: 
 .act .iss { color: var(--bad); font-size: 12px; padding: 0 10px 7px 31px; margin-top: -3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl { font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); padding: 7px 12px 0; background: var(--code); border-top: 1px solid var(--border); }
 .act pre { margin: 0; padding: 6px 12px 9px; background: var(--code); white-space: pre-wrap; word-break: break-word; max-height: 440px; overflow: auto; }
+/* Hanging indent: a long line that wraps continues indented, so each real line starts at the margin. */
+pre.hang .ln { display: block; padding-left: 4ch; text-indent: -4ch; }
 .act pre.failed { color: var(--bad); }
 .show-all { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: var(--code); color: var(--accent); cursor: pointer; font-size: 12px; padding: 5px; }
 

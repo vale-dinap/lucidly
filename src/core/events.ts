@@ -90,7 +90,16 @@ export interface ToolStartEvent extends EventBase {
   spawnsAgent?: boolean;
   /** 'command': a file change made by a shell command (kind 'edit'), not by an edit tool. */
   via?: 'command';
+  /** A long shell command split into readable parts (its shell lines, a script it runs, content it writes). */
+  parts?: CommandPart[];
 }
+
+/** A piece of a shell command: see `commandParts` in the shell adapter. */
+export type CommandPart =
+  | { kind: 'shell'; text: string }
+  | { kind: 'script'; lang: string; text: string }
+  | { kind: 'content'; file: string; text: string }
+  | { kind: 'text'; text: string };
 
 /** One hunk of a unified diff, with real file line numbers. */
 export interface DiffHunk {

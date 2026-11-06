@@ -5,6 +5,7 @@
  */
 import type { DiffHunk, Adapter, LucidlyEvent, PlanItem, PlanStatus } from '../core/events.ts';
 import { KnownFiles, PLANNING_TOOLS, commandEdit, summarizeTool } from './claude-tools.ts';
+import { commandParts } from './shell-writes.ts';
 
 type Rec = Record<string, any>;
 
@@ -316,6 +317,7 @@ export class ClaudeCodeAdapter implements Adapter {
     }
     let s = summarizeTool(name, input);
     if (s.kind === 'command') s = commandEdit(name, input, s, this.cwd, this.known) ?? s;
+    const parts = name === 'Bash' && typeof input.command === 'string' ? commandParts(input.command) : undefined;
     for (const f of s.files ?? []) this.known.add(f);
     emit({
       type: 'tool.start',
@@ -328,6 +330,7 @@ export class ClaudeCodeAdapter implements Adapter {
       files: s.files,
       spawnsAgent: s.spawnsAgent,
       ...(s.via ? { via: s.via } : {}),
+      ...(parts ? { parts } : {}),
       raw: s.raw,
     });
   }

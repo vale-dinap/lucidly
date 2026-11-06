@@ -9,6 +9,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 - **A clear sign when the Lucidly server stops.** The status pill turns red ("Server stopped") and a bar under the top bar says the page no longer updates and since when. Live timers and animations stop, and keep-awake "only while working" lets go. Start `lucidly` again and the page reconnects by itself, and the warning goes.
 - **The session list refreshes itself while it's open**, so a session started in the meantime shows up straight away. Only the transcripts that changed are read again.
 - **A light / dark theme switch**, at the right end of the top bar: System (the default, following the operating system), Light or Dark. The choice is remembered.
+- **Long shell commands are shown in parts**: their shell lines, the script they run (`node - <<'EOF'`, `python -c "…"`), highlighted as JavaScript or Python, and the content they write to a file (`cat > a.py <<'EOF'`), labelled with the file. *Show the whole command* shows it as recorded. For commands that change files, long lines that wrap continue indented, and dense JavaScript can be laid out for reading with *Reformat for reading* (display only; *Show as written* goes back).
 
 ### Fixed
 

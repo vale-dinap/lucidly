@@ -1,4 +1,4 @@
-import type { ActivityKind, DiffHunk } from './events.ts';
+import type { ActivityKind, CommandPart, DiffHunk } from './events.ts';
 
 /**
  * goal     – one task the user asked for (start point → end point)
@@ -129,6 +129,8 @@ export interface Chunk {
   failed?: boolean;
   /** Result chunks of file edits: the change as diff hunks. */
   patch?: DiffHunk[];
+  /** Tool chunks of long shell commands: the command in readable parts. */
+  parts?: CommandPart[];
 }
 
 export type RunStatus = 'idle' | 'working' | 'waiting';

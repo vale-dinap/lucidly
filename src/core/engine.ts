@@ -896,7 +896,8 @@ export class Engine {
     if (retry) node.retry = true;
     if (ev.spawnsAgent) this.scopes.set(ev.callId, node.id);
     this.calls.set(ev.callId, { node: node.id, unit, tool: ev.tool, label: ev.label });
-    this.addChunk(node.id, 'tool', ev.raw ?? ev.detail ?? ev.label, ev.ts, ev.label);
+    const chunk = this.addChunk(node.id, 'tool', ev.raw ?? ev.detail ?? ev.label, ev.ts, ev.label);
+    if (ev.parts?.length && ev.parts.every((p) => p.text.length <= MAX_CHUNK)) this.chunks[chunk].parts = ev.parts;
     this.bump(unit, 'actions');
     this.addContext(unit, ev);
     const held = ev.spawnsAgent ? this.orphans.get(ev.callId) : undefined;

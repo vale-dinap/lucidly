@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shellWrites } from '../src/adapters/shell-writes.ts';
+import { commandParts, shellWrites } from '../src/adapters/shell-writes.ts';
 
 const MARK = { write: '', delete: '-', from: '<', to: '>' };
 const files = (cmd: string, powershell = false) =>
@@ -98,4 +98,28 @@ test('PowerShell cmdlets and redirects', () => {
   assert.deepEqual(files('npm test *> results.txt', true), ['results.txt']);
   assert.deepEqual(files("git log -1 2>$null; Write-Output 'a > b'", true), []);
   assert.deepEqual(files("@'\nSet-Content x.txt\n'@ | Out-File y.txt", true), ['y.txt']);
+});
+
+test('commands split into shell lines, scripts and written content', () => {
+  const run = commandParts(`cd /app && node - <<'EOF'\nconst fs = require('fs');\nfs.writeFileSync('a.js', '');\nEOF\nnode --check a.js && echo ok`);
+  assert.deepEqual(run, [
+    { kind: 'shell', text: `cd /app && node - <<'EOF'` },
+    { kind: 'script', lang: 'javascript', text: `const fs = require('fs');\nfs.writeFileSync('a.js', '');` },
+    { kind: 'shell', text: 'node --check a.js && echo ok' },
+  ]);
+  assert.deepEqual(commandParts(`cat > src/x.py <<'EOF'\nprint(1)\nEOF`), [
+    { kind: 'shell', text: `cat > src/x.py <<'EOF'` },
+    { kind: 'content', file: 'src/x.py', text: 'print(1)' },
+  ]);
+  assert.deepEqual(commandParts(`git commit -F - <<'EOF'\nfix: a thing\nEOF`), [
+    { kind: 'shell', text: `git commit -F - <<'EOF'` },
+    { kind: 'text', text: 'fix: a thing' },
+  ]);
+  const inline = commandParts(`python3 -c "\nimport json\nprint(json.dumps({'a': 1}))\n" | head`);
+  assert.deepEqual(inline, [
+    { kind: 'shell', text: 'python3 -c … | head' },
+    { kind: 'script', lang: 'python', text: `\nimport json\nprint(json.dumps({'a': 1}))\n` },
+  ]);
+  assert.equal(commandParts('npm test 2>&1 | tail -5'), undefined);
+  assert.equal(commandParts(`node -e "console.log(1)"`), undefined);
 });

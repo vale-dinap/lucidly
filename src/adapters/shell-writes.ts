@@ -12,6 +12,8 @@
  *    when the caller recognizes them as files of the session (`known`).
  */
 
+import type { CommandPart } from '../core/events.ts';
+
 export interface ShellWrite {
   /** The path as written in the command (relative, absolute, or Git Bash style /c/...). */
   path: string;
@@ -23,11 +25,14 @@ export interface ShellWrite {
   guessed?: boolean;
 }
 
-type Tok = { t: string; op?: boolean };
+/** A word or operator; `at` is where a word sits in the source, as [start, end). */
+type Tok = { t: string; op?: boolean; at?: [number, number] };
 interface Simple {
   words: Tok[];
   /** Heredoc and here-string bodies fed to this command. */
   bodies: string[];
+  /** Where each heredoc body sits in the source, its delimiter line included, as [start, end). */
+  spans: [number, number][];
   /** Run in the background (`cmd &`): its redirects are logs, not edits. */
   background?: boolean;
 }
@@ -43,28 +48,33 @@ const NULL_TARGETS = /^(?:\/dev\/(?:null|stdout|stderr|tty)|nul|\$null|&\d?|-)$/
 /** Splits a command line into simple commands, words and operators, like a (small) shell would. */
 function parse(src: string, powershell: boolean): Simple[] {
   const out: Simple[] = [];
-  let cur: Simple = { words: [], bodies: [] };
+  let cur: Simple = { words: [], bodies: [], spans: [] };
   let word = '';
   let inWord = false;
+  let wordStart = 0;
+  let i = 0;
   const heredocs: { delim: string; strip: boolean; into: Simple }[] = [];
+  const mark = () => {
+    if (!inWord) wordStart = i;
+    inWord = true;
+  };
   const endWord = () => {
-    if (inWord) cur.words.push({ t: word });
+    if (inWord) cur.words.push({ t: word, at: [wordStart, i] });
     word = '';
     inWord = false;
   };
   const endCmd = () => {
     endWord();
     if (cur.words.length || cur.bodies.length) out.push(cur);
-    cur = { words: [], bodies: [] };
+    cur = { words: [], bodies: [], spans: [] };
   };
-  let i = 0;
   while (i < src.length) {
     const c = src[i];
     const at = (s: string) => src.startsWith(s, i);
     if (!powershell && c === '\\' && i + 1 < src.length) {
       if (src[i + 1] !== '\n') {
         word += src[i + 1];
-        inWord = true;
+        mark();
       }
       i += 2;
       continue;
@@ -72,7 +82,7 @@ function parse(src: string, powershell: boolean): Simple[] {
     if (powershell && c === '`' && i + 1 < src.length) {
       if (src[i + 1] !== '\n') {
         word += src[i + 1];
-        inWord = true;
+        mark();
       }
       i += 2;
       continue;
@@ -105,7 +115,7 @@ function parse(src: string, powershell: boolean): Simple[] {
         s += src[j++];
       }
       word += s;
-      inWord = true;
+      mark();
       i = j + 1;
       continue;
     }
@@ -118,6 +128,7 @@ function parse(src: string, powershell: boolean): Simple[] {
       i++;
       // Heredoc bodies start on the next line and run to their delimiter line.
       for (const h of heredocs.splice(0)) {
+        const start = i;
         const lines: string[] = [];
         while (i < src.length) {
           const nl = src.indexOf('\n', i);
@@ -127,6 +138,7 @@ function parse(src: string, powershell: boolean): Simple[] {
           lines.push(line);
         }
         h.into.bodies.push(lines.join('\n'));
+        h.into.spans.push([start, i]);
       }
       continue;
     }
@@ -145,7 +157,7 @@ function parse(src: string, powershell: boolean): Simple[] {
         else if (src[j] === close && depth-- === 0) break;
       }
       word += src.slice(i, j + 1);
-      inWord = true;
+      mark();
       i = j + 1;
       continue;
     }
@@ -170,7 +182,7 @@ function parse(src: string, powershell: boolean): Simple[] {
       continue;
     }
     word += c;
-    inWord = true;
+    mark();
     i++;
   }
   endCmd();
@@ -395,3 +407,85 @@ export function scriptWrites(code: string): { path: string; op: ShellWrite['op']
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// ───────────────────────────── a command, split into readable parts
+// A long command cut where it embeds other text: the shell lines, a script it runs (node - <<EOF,
+// python -c "..."), content it writes to a file (cat > a.py <<EOF), or other text fed to a command.
+
+/** Interpreters and the language of the scripts they run ('' keeps the interpreter's name). */
+const LANG: [RegExp, string][] = [
+  [/^(?:node|nodejs|deno|bun)$/, 'javascript'],
+  [/^(?:python[\d.]*|py)$/, 'python'],
+  [/^(?:bash|sh|zsh)$/, 'shell'],
+  [/^(?:ruby|php|perl)$/, ''],
+];
+const langOf = (name: string): string | undefined => {
+  const n = name.replace(/\.exe$/, '');
+  for (const [re, lang] of LANG) if (re.test(n)) return lang || n;
+  return undefined;
+};
+
+/**
+ * The parts of a Bash command, in order, or undefined when it embeds nothing worth splitting out
+ * (then it is shown whole, as before). Inline scripts are cut out of their line, which keeps an
+ * ellipsis in their place; heredoc bodies follow the line that starts them.
+ */
+export function commandParts(command: string): CommandPart[] | undefined {
+  type Cut = { start: number; end: number; part: CommandPart; inline: boolean };
+  const cuts: Cut[] = [];
+  for (const cmd of parse(command, false)) {
+    const words = cmd.words.filter((w) => !w.op);
+    let k = 0;
+    while (k < words.length && (/^[A-Za-z_]\w*=/.test(words[k].t) || WRAPPERS.has(base(words[k].t)))) k++;
+    const name = words[k] ? base(words[k].t) : '';
+    const lang = langOf(name);
+    // Where a heredoc goes: a file it is written to (> file, tee file), else the command reading it.
+    let file: string | undefined;
+    for (let j = 0; j < cmd.words.length - 1; j++) {
+      const w = cmd.words[j];
+      if (w.op && WRITE_REDIRECTS.has(w.t) && !cmd.words[j + 1].op) file = cmd.words[j + 1].t;
+    }
+    if (!file && name === 'tee') file = words.slice(k + 1).find((w) => !isOpt(w.t))?.t;
+    cmd.bodies.forEach((text, b) => {
+      const span = cmd.spans[b];
+      if (!span) return;
+      const part: CommandPart = file ? { kind: 'content', file, text } : lang !== undefined ? { kind: 'script', lang, text } : { kind: 'text', text };
+      cuts.push({ start: span[0], end: span[1], part, inline: false });
+    });
+    // node -e "...", python -c "...", bash -c "...": cut out when long enough to deserve a block.
+    if (lang !== undefined) {
+      const e = words.findIndex((w, j) => j > k && /^(?:-e|-c|-p|--eval|--print)$/.test(w.t));
+      const script = e >= 0 ? words[e + 1] : undefined;
+      if (script?.at && (script.t.includes('\n') || script.t.length > 100)) {
+        cuts.push({ start: script.at[0], end: script.at[1], part: { kind: 'script', lang, text: script.t }, inline: true });
+      }
+    }
+  }
+  if (!cuts.length) return undefined;
+  cuts.sort((a, b) => a.start - b.start);
+  const parts: CommandPart[] = [];
+  const held: CommandPart[] = [];
+  let shell = '';
+  let pos = 0;
+  const flush = () => {
+    const text = shell.replace(/\s+$/, '');
+    if (text.trim()) parts.push({ kind: 'shell', text });
+    shell = '';
+    parts.push(...held.splice(0));
+  };
+  for (const c of cuts) {
+    if (c.start < pos) continue; // nested in an earlier cut
+    shell += command.slice(pos, c.start);
+    if (c.inline) {
+      shell += '…';
+      held.push(c.part);
+    } else {
+      flush();
+      parts.push(c.part);
+    }
+    pos = c.end;
+  }
+  shell += command.slice(pos);
+  flush();
+  return parts;
+}
