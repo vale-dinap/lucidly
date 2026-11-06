@@ -407,6 +407,12 @@ mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inhe
 /* Your own messages stand out from everything the agent did: tinted, outlined, with an accent bar. */
 .ev-prompt.you { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-left: 3px solid var(--accent); }
 .ev-prompt.you .who { color: var(--accent); }
+/* The point of the conversation a selected node stands for: a soft yellow glow. */
+.ev.focus { --glow: #e0a400; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--glow) 75%, transparent), 0 0 18px 2px color-mix(in srgb, var(--glow) 32%, transparent); border-radius: var(--r); }
+.ev.focus.flash { animation: ev-glow 1.2s ease-out; }
+.ev-outcome.focus { padding: 8px 12px 8px 14px; }
+:root[data-theme='dark'] .ev.focus { --glow: #f5c84b; }
+@keyframes ev-glow { 0% { box-shadow: 0 0 0 1.5px var(--glow), 0 0 28px 8px color-mix(in srgb, var(--glow) 55%, transparent); } }
 .who { display: block; font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; }
 .ev-outcome { border-left: 2px solid var(--done); padding-left: 12px; }
 .ev-outcome .who { color: var(--done); }

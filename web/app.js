@@ -1193,6 +1193,7 @@ function goalAim(g) {
 function stepRows(g, shown) {
   const show = new Set(shown.map((s) => s.id));
   const out = [];
+  let round = 0;
   for (const c of kids(g)) {
     if (c.type === 'step') {
       if (show.has(c.id)) out.push(stepHtml(c));
@@ -1200,10 +1201,10 @@ function stepRows(g, shown) {
       const r = c.round;
       if (r) {
         const head = r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now';
-        out.push(`<li class="finish round${r.interrupted || r.asked ? '' : ' reached'}" data-select="${g.id}"><span class="mk"></span><div class="ft"><small>${head}</small>${esc(clip(r.outcome ?? '', 360))}</div></li>`);
+        out.push(`<li class="finish round${r.interrupted || r.asked ? '' : ' reached'}" data-select="${g.id}" data-focus="end:${round++}"><span class="mk"></span><div class="ft"><small>${head}</small>${esc(clip(r.outcome ?? '', 360))}</div></li>`);
       }
       const who = r ? 'You replied' : 'You wrote, while the agent worked';
-      out.push(`<li class="round-reply${S.selected === c.id ? ' sel' : ''}" data-select="${c.id}" data-node="${c.id}"><span class="mk">${icon('user')}</span><div class="rr-t"><small>${who}</small>${hl(c.title.replace(/^You: /, ''))}</div></li>`);
+      out.push(`<li class="round-reply${S.selected === g.id && S.focus?.id === c.id ? ' sel' : ''}" data-select="${g.id}" data-focus="u:${c.id}"><span class="mk">${icon('user')}</span><div class="rr-t"><small>${who}</small>${hl(c.title.replace(/^You: /, ''))}</div></li>`);
     }
   }
   return out.join('');
@@ -1254,7 +1255,7 @@ function taskHtml(g, q) {
   const endText = g.outcome
     ? `<small>Result</small>${esc(clip(g.outcome, 360))}`
     : `<small>Goal${g.status === 'waiting' ? ' · interrupted' : g.status === 'done' ? ' · done' : ''}</small>${hl(clip(aim, 240))}`;
-  const finish = (tag) => `<${tag} class="finish${reached ? ' reached' : ''}" data-select="${g.id}"><span class="mk"></span><div class="ft">${endText}</div></${tag}>`;
+  const finish = (tag) => `<${tag} class="finish${reached ? ' reached' : ''}" data-select="${g.id}" data-focus="end:${kids(g).filter((c) => c.round).length}"><span class="mk"></span><div class="ft">${endText}</div></${tag}>`;
   if (qa) return `<section class="${cls}">${head}<div class="task-b">${finish('div')}</div></section>`;
   const own = filtering() ? '' : childrenHtml(g);
   return `<section class="${cls}">${head}
@@ -1337,7 +1338,7 @@ function flowOpen(g, q, hit) {
 /** One chain node: its incoming connector, the shape, and a short label. */
 function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
   // Start and end both stand for the task: only the one you clicked shows as selected.
-  const sel = S.selected === id && (key.startsWith('s:') || key.startsWith('w:') || key.startsWith('u:') || (S.flowPick ?? 'start') === key) ? ' sel' : '';
+  const sel = S.selected === id && (key.startsWith('s:') || key.startsWith('w:') || (S.flowPick ?? 'start') === key) ? ' sel' : '';
   return {
     key,
     st,
@@ -1377,7 +1378,7 @@ function chainItems(g, q) {
   const replyNode = (c) =>
     flowNode({
       key: `u:${c.id}`,
-      id: c.id,
+      id: g.id,
       kind: 'start',
       st: 'start',
       label: c.round ? 'Reply' : 'Message',
@@ -2302,6 +2303,22 @@ function diffView(key, file, rows, numbered) {
     <div class="diff"><table>${body}</table></div>${full ? '' : `<button class="show-all" data-full="${esc(key)}">Show all ${rows.length} lines</button>`}`;
 }
 
+/**
+ * The chunk a task's node points at in its conversation (S.focus): the request, one of your
+ * messages, or a round's result (the last result before the reply that continued it; the final
+ * one for the last round).
+ */
+function focusChunk(rootId, chunks) {
+  const f = S.focus;
+  if (!f || S.selected !== rootId || N(rootId)?.type !== 'goal') return null;
+  if (f.at === 'request') return chunks.find((c) => c.kind === 'prompt') ?? null;
+  if (f.at === 'msg') return chunks.find((c) => c.kind === 'prompt' && c.node === f.id) ?? null;
+  const replies = kids(N(rootId)).filter((c) => c.round);
+  const reply = replies[f.round];
+  const until = reply ? chunks.findIndex((c) => c.kind === 'prompt' && c.node === reply.id) : chunks.length;
+  return chunks.slice(0, until < 0 ? chunks.length : until).findLast((c) => c.kind === 'outcome') ?? null;
+}
+
 function transcriptHtml(rootId, chunks) {
   if (!chunks.length) return '<div class="loading">No output recorded for this item.</div>';
   const out = [];
@@ -2311,6 +2328,8 @@ function transcriptHtml(rootId, chunks) {
   const tools = new Set(chunks.filter((c) => c.kind === 'tool').map((c) => c.node));
   for (const c of chunks) if (c.kind === 'result' && tools.has(c.node) && !results.has(c.node)) results.set(c.node, c);
   const paired = new Set([...results.values()]);
+  const focus = focusChunk(rootId, chunks);
+  const glow = (c) => (c === focus ? ' focus' : '');
   for (let i = 0; i < chunks.length; i++) {
     const c = chunks[i];
     const sc = scopeOf(c.node, rootId);
@@ -2325,7 +2344,7 @@ function transcriptHtml(rootId, chunks) {
       case 'prompt':
         {
           const sub = c.label === 'Task given to subagent';
-          out.push(`<div class="ev ev-prompt${sub ? '' : ' you'}"><span class="who">${sub ? 'Task for subagent' : 'You'}</span>${esc(c.text)}</div>`);
+          out.push(`<div class="ev ev-prompt${sub ? '' : ' you'}${glow(c)}"><span class="who">${sub ? 'Task for subagent' : 'You'}</span>${esc(c.text)}</div>`);
         }
         break;
       case 'text':
@@ -2335,7 +2354,7 @@ function transcriptHtml(rootId, chunks) {
         out.push(`<div class="ev ev-text ev-plan"><span class="who">Plan</span>${md(c.text)}</div>`);
         break;
       case 'outcome':
-        out.push(`<div class="ev ev-text ev-outcome"><span class="who">Result</span>${md(c.text)}</div>`);
+        out.push(`<div class="ev ev-text ev-outcome${glow(c)}"><span class="who">Result</span>${md(c.text)}</div>`);
         break;
       case 'thinking':
         out.push(`<details class="ev ev-think"><summary>Thinking…</summary><div>${esc(c.text)}</div></details>`);
@@ -2505,6 +2524,16 @@ function renderDetail() {
     ${secHtml('tr', 'Transcript', chunks ? transcriptHtml(n.id, chunks) : '<div class="loading">Loading…</div>', hasActs ? '<a data-acts="open">Expand all</a><a data-acts="close">Collapse all</a>' : '')}`;
   el.dataset.shown = n.id;
   el.scrollTop = sameNode ? scroll : 0;
+  // Bring the glowing point into view once, when it is first shown (not on every redraw).
+  const glow = chunks && el.querySelector('.ev.focus');
+  const focusKey = glow ? `${n.id}|${JSON.stringify(S.focus)}` : null;
+  if (glow && S.focusShown !== focusKey) {
+    S.focusShown = focusKey;
+    glow.classList.add('flash');
+    el.scrollTop += glow.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight / 3;
+    return;
+  }
+  if (!glow) S.focusShown = null;
   // While following a live step, keep its newest output in view.
   if (S.follow && n.status === 'active' && sameNode && scroll + el.clientHeight >= el.scrollHeight - 140) el.scrollTop = el.scrollHeight;
 }
@@ -3225,6 +3254,7 @@ function setFollow(on) {
 
 function select(id) {
   S.selected = id;
+  S.focus = null;
   S.followQuiet = false;
   S.follow = id === followTarget();
   schedule();
@@ -3476,8 +3506,12 @@ document.addEventListener('click', (e) => {
       S.selected = null;
       return schedule();
     }
-    S.flowPick = key === 'start' || key.startsWith('end:') ? key : null;
-    return select(el.dataset.fnode);
+    S.flowPick = key === 'start' || key.startsWith('end:') || key.startsWith('u:') ? key : null;
+    select(el.dataset.fnode);
+    // The task's nodes (request, your messages, where each round ended) open the task's whole
+    // conversation in the panel, with that point glowing.
+    S.focus = key === 'start' ? { at: 'request' } : key.startsWith('u:') ? { at: 'msg', id: key.slice(2) } : key.startsWith('end:') ? { at: 'end', round: Number(key.slice(4)) } : null;
+    return;
   }
   if ((el = on('[data-ftoggle]'))) {
     const g = N(el.dataset.ftoggle);
@@ -3506,7 +3540,12 @@ document.addEventListener('click', (e) => {
   }
   // The selected mark in a capsule, clicked again: back to its step (the capsule stays open).
   if ((el = on('#pathView .fcap .fm.sel'))) return select(el.closest('.fcap').dataset.key.slice(2));
-  if ((el = on('#pathView [data-select]'))) return select(el.dataset.select);
+  if ((el = on('#pathView [data-select]'))) {
+    select(el.dataset.select);
+    const k = el.dataset.focus ?? '';
+    S.focus = k.startsWith('u:') ? { at: 'msg', id: k.slice(2) } : k.startsWith('end:') ? { at: 'end', round: Number(k.slice(4)) } : null;
+    return;
+  }
 });
 
 document.addEventListener(
