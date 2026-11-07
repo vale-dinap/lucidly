@@ -4,7 +4,7 @@
 
 *See what your AI agent is doing, at a glance.*
 
-https://github.com/user-attachments/assets/ff9ff898-4317-4e78-99e4-caac09b620ca
+https://github.com/user-attachments/assets/6ceb52e7-eb58-4223-adba-d6a04d61b263
 
 ## Quick start
 
