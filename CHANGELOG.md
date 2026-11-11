@@ -4,6 +4,8 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
 ### Added
 
 - **Optional sound alerts**, with the bell next to keep-awake in the top bar: a short sound when a session finishes, asks you something or runs into trouble, in any of your tabs. Off by default. Each event has its own sound, chosen from a dropdown (17 sounds in three groups: gentle ones, questions, and louder alerts such as Alarm, Siren and Buzzer; or None for no sound) and tried with *Test*, and there is a volume slider. *Only when I'm not looking* (on by default) keeps quiet for the session on screen while the page is visible. The sounds are made in the browser, no files. Browsers only allow sound after you interact with a page: after a reload the bell turns amber until your first click or key press.
@@ -72,6 +74,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 First public release.
 
+[0.5.0]: https://github.com/vale-dinap/lucidly/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/vale-dinap/lucidly/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vale-dinap/lucidly/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vale-dinap/lucidly/compare/v0.1.0...v0.2.0
