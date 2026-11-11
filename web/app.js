@@ -3894,7 +3894,7 @@ function sessionRow(s, withDir) {
   // A session already in a tab: picking it switches to that tab.
   const tab = tabOfPath(s.path);
   const mark = tab ? `<span class="pin-tab">${tab === activeTab() ? 'Showing' : 'In a tab'}</span>` : '';
-  const add = tab ? '' : `<button type="button" class="pnew" data-newtab title="Open in a new tab" aria-label="Open in a new tab">${SVG('M12 5v14M5 12h14')}</button>`;
+  const add = tab ? '' : '<button type="button" class="pnew" data-newtab title="Open in a new tab">New tab</button>';
   return `<li data-path="${esc(s.path)}" title="${esc(s.path)}"${tab ? ' class="intab"' : ''}>
         <span class="dot${s.live ? ' live' : ''}" title="${s.live ? 'Active in the last few minutes' : ''}"></span>
         <div class="pm"><div class="pt">${esc(title)}</div><div class="ps">${esc(sub)}</div></div>

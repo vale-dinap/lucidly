@@ -1275,9 +1275,8 @@ pre .dh { color: var(--faint); font-weight: 600; }
 
 /* The session list: what's already in a tab, and a "new tab" button on each row. */
 .plist .pin-tab { flex: none; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-bg); padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
-.plist .pnew { flex: none; width: 24px; height: 24px; margin: -4px -4px -4px 0; padding: 4px; border: 0; border-radius: 6px; background: none; color: var(--faint); cursor: pointer; opacity: 0; }
+.plist .pnew { flex: none; height: 24px; margin: -4px -2px -4px 0; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 550; white-space: nowrap; cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; }
 .plist li:hover .pnew, .plist .pnew:focus-visible { opacity: 1; }
-.plist .pnew:hover { background: var(--border); color: var(--text); }
-.plist .pnew svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.plist .pnew:hover { background: var(--accent-bg); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
 .picker-hint { flex: none; padding: 0 18px 8px; color: var(--faint); font-size: 11.5px; }
 .picker-hint:empty { display: none; }
