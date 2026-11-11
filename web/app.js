@@ -1359,14 +1359,19 @@ function flowNode({ key, id, kind, st, label, tip, badge = '', extra = '' }) {
 
 function chainItems(g, q) {
   const steps = kids(g).filter((c) => c.type === 'step');
+  // Each node also says, in a few words, what it stands for (`say`: Glance's line under the orb).
   const items = [
-    flowNode({ key: 'start', id: g.id, kind: 'start', st: 'start', label: 'Request', tip: `You asked (${clock(g.startedAt)}): ${clip(g.title, 300)}`, extra: ' start' }),
+    {
+      ...flowNode({ key: 'start', id: g.id, kind: 'start', st: 'start', label: 'Request', tip: `You asked (${clock(g.startedAt)}): ${clip(g.title, 300)}`, extra: ' start' }),
+      say: { tag: 'Your request', st: 'you', text: g.startedAt ? `sent at ${clock(g.startedAt)}` : '' },
+    },
   ];
   // A task with no steps but some work of its own: one node stands for that work.
   if (!steps.length && (g.stats?.actions ?? 0) > 0) {
     const kind = stepKind(g);
     const st = unresolvedOf(g) ? 'bad' : g.status === 'active' ? (liveNow() ? 'live' : 'idle') : 'done';
-    items.push(flowNode({ key: `w:${g.id}`, id: g.id, kind, st, label: plural(g.stats.actions, 'action'), tip: `${plural(g.stats.actions, 'action')}, mostly ${KIND_LABEL[kind]}` }));
+    const text = `${plural(g.stats.actions, 'action')}, mostly ${KIND_LABEL[kind]}`;
+    items.push({ ...flowNode({ key: `w:${g.id}`, id: g.id, kind, st, label: plural(g.stats.actions, 'action'), tip: text }), say: { tag: 'Work', st, text } });
   }
   // A task can run over several rounds: a reply after its turn ended continues it. The round's
   // end node stays where it was, turned into an intermediate goal, and the reply follows it.
@@ -1378,15 +1383,17 @@ function chainItems(g, q) {
       const st = reached ? 'done' : g.status === 'waiting' ? 'wait' : 'pend';
       const label = reached ? 'Done' : g.status === 'waiting' ? 'Interrupted' : 'Goal';
       const tip = g.outcome ? `Result: ${clip(g.outcome, 400)}` : `Goal: ${clip(goalAim(g), 300)}`;
-      return flowNode({ key: `end:${round}`, id: g.id, kind: 'end', st, label, tip, extra: ' end' });
+      const say = { tag: g.outcome ? 'Result' : label === 'Done' ? 'Done' : label, st: st === 'done' ? 'done' : st === 'wait' ? 'wait' : 'pend', text: g.outcome ?? goalAim(g) };
+      return { ...flowNode({ key: `end:${round}`, id: g.id, kind: 'end', st, label, tip, extra: ' end' }), say };
     }
     const label = r.interrupted ? 'Interrupted' : r.asked ? 'Asked' : 'Done';
     const tip = `${r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now'}${r.outcome ? `: ${clip(r.outcome, 400)}` : ''}\nThe task went on after your reply.`;
-    return flowNode({ key: `end:${round}`, id: g.id, kind: r.interrupted ? 'mid-wait' : r.asked ? 'mid-ask' : 'mid', st: r.interrupted ? 'wait' : 'done', label, tip, extra: ' mid' });
+    const say = { tag: r.interrupted ? 'Interrupted' : r.asked ? 'Asked you' : 'Done for now', st: r.interrupted ? 'wait' : r.asked ? 'ask' : 'done', text: r.outcome ?? '' };
+    return { ...flowNode({ key: `end:${round}`, id: g.id, kind: r.interrupted ? 'mid-wait' : r.asked ? 'mid-ask' : 'mid', st: r.interrupted ? 'wait' : 'done', label, tip, extra: ' mid' }), say };
   };
   // Every message of yours is a node: a reply that continued the task, or one sent while it worked.
-  const replyNode = (c) =>
-    flowNode({
+  const replyNode = (c) => ({
+    ...flowNode({
       key: `u:${c.id}`,
       id: g.id,
       kind: 'start',
@@ -1394,7 +1401,9 @@ function chainItems(g, q) {
       label: c.round ? 'Reply' : 'Message',
       tip: `${c.round ? 'You replied' : 'You wrote, while the agent worked'} (${clock(c.startedAt)}): ${clip(c.title.replace(/^You: /, ''), 300)}`,
       extra: ' reply',
-    });
+    }),
+    say: { tag: c.round ? 'Your reply' : 'Your message', st: 'you', text: c.title.replace(/^You: /, '') },
+  });
   let i = 0;
   for (const c of kids(g)) {
     if (c.kind === 'user') {
@@ -1424,7 +1433,8 @@ function chainItems(g, q) {
       st === 'bad' ? 'Failed: nothing has worked after it yet' : rec ? 'Failed along the way, then recovered' : s.untracked ? "Done with the others: its work wasn't told apart" : '',
     ].filter(Boolean).join('\n');
     const badge = (st === 'bad' ? '<span class="fn-b bad">!</span>' : rec ? '<span class="fn-b rec"></span>' : '') + (a > 1 ? `<span class="fn-n">${a > 99 ? '99+' : a}</span>` : '');
-    items.push({ ...flowNode({ key: `s:${s.id}`, id: s.id, kind, st, label: s.title, tip, badge, extra: (s.untracked ? ' untr' : '') + dim }), i });
+    const say = { tag: `Step ${i + 1} of ${steps.length}`, st, text: s.title };
+    items.push({ ...flowNode({ key: `s:${s.id}`, id: s.id, kind, st, label: s.title, tip, badge, extra: (s.untracked ? ' untr' : '') + dim }), i, say });
     const cap = capsuleItem(s, dim);
     if (cap) items.push(cap);
   }
@@ -1486,8 +1496,8 @@ const glanceTime = (s) => (s.ago ? ago(s.since) : dur(s.since));
 function renderGlance(view) {
   if (!view.__glance) {
     view.innerHTML = `<div class="glance">
-      <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div><div class="gx-ask" hidden><small>Waiting for your answer</small><span></span></div></div>
-      <div class="gx-title"></div>
+      <div class="gx-state"><button type="button" class="gx-orb" data-glive><svg viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg></button><div class="gx-time"></div><div class="gx-ask" hidden><small>Waiting for your answer</small><span></span></div><button type="button" class="gx-agents" aria-haspopup="true" aria-expanded="false" hidden></button><div class="gx-agpop" role="menu" hidden></div></div>
+      <div class="gx-lines"><div class="gx-line gx-task"></div><div class="gx-line gx-step"></div></div>
       <div class="gx-wheel"></div>
       <div class="gx-hint">Scroll or <kbd>↑</kbd> <kbd>↓</kbd> for other tasks · <kbd>←</kbd> <kbd>→</kbd> along the steps · <kbd>Enter</kbd> toggle selection · <kbd>F</kbd> back to now</div>
     </div>`;
@@ -1516,17 +1526,20 @@ function renderGlance(view) {
     S.gSettleTimer = setTimeout(schedule, wait + 20);
   }
   // With the side panel open, a past task shows its conversation there as soon as it reaches the
-  // spotlight (from your first message), without waiting for it to unfold; back on the live
-  // task, the panel shows what it showed before. A closed panel stays closed.
+  // spotlight, at its goal (where the chain is centred, see placeChain), without waiting for it
+  // to unfold; back on the live task, the panel shows what it showed before. A closed panel
+  // stays closed.
   const past = !!spot && spot !== live;
   if (past && S.gOpened !== spot.id) {
     S.gOpened = spot.id;
     if (S.selected) {
       if (!S.gAutoSel) S.gPrevSel = { sel: S.selected, pick: S.flowPick, focus: S.focus };
+      // The goal is the last round's end (each reply that continued the task began a round).
+      const round = kids(spot).filter((c) => c.kind === 'user' && c.round).length;
       S.gAutoSel = spot.id;
       S.selected = spot.id;
-      S.flowPick = 'start';
-      S.focus = { at: 'request' };
+      S.flowPick = `end:${round}`;
+      S.focus = { at: 'end', round };
     }
   } else if (!past) {
     S.gOpened = null;
@@ -1562,10 +1575,6 @@ function renderGlance(view) {
   if (ask.hidden !== (q === null)) ask.hidden = q === null;
   const words = q || 'The agent asked you something.';
   if (q !== null && ask.lastChild.textContent !== words) ask.lastChild.textContent = words;
-  const title = root.querySelector('.gx-title');
-  const t = spot ? spot.title : '';
-  if (title.textContent !== t) title.textContent = t;
-  title.title = t;
 
   // The wheel: two tasks above the spotlight and two below, compressed to their node and fading
   // with distance. Empty slots keep the spotlight on the same spot at the start and end of the run.
@@ -1608,7 +1617,133 @@ function renderGlance(view) {
         if (!el.classList.contains('pad')) el.animate([{ opacity: 0, transform: `translateY(${(S.gDir ?? 1) > 0 ? 36 : -36}px)` }, {}], { duration: glanceFast() ? 170 : 380, easing: 'cubic-bezier(.2,.7,.3,1)' });
       } else if (Math.abs(from - top) > 1) el.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], { duration: glanceFast() ? 170 : 380, easing: 'cubic-bezier(.2,.7,.3,1)' });
     }
+  glanceLines(root, spot, spot === live ? s : null);
+  glanceAgents(root);
   S.glanceReady = true;
+}
+
+// Small status marks for the lines under the orb: a spinning ring while it runs, a tick, a
+// cross, a balloon, a pause, or an empty ring for what hasn't started (or has gone quiet).
+const GX_MARK = { done: GLYPH.check, bad: 'M7 7l10 10 M17 7L7 17', ask: GLYPH['mid-ask'], wait: GLYPH.pause, you: PATHS.user };
+const gxMark = (st) => `<span class="gx-mk m-${st}" aria-hidden="true">${GX_MARK[st] ? SVG(GX_MARK[st]) : ''}</span>`;
+
+/** The task in the spotlight's state, for its line: the live one follows the orb. */
+function glanceTaskSt(g, s) {
+  if (s?.st === 'you') return 'ask';
+  if (s?.st === 'bad' || g.status === 'failed') return 'bad';
+  if (g.status === 'active') return s?.st === 'work' ? 'live' : 'idle';
+  if (g.status === 'waiting') return 'wait';
+  if (g.asked) return 'ask';
+  return 'done';
+}
+
+const GX_SAY = { live: 'Under way', idle: 'Under way', done: 'Done', bad: 'In trouble', ask: 'Asked you', wait: 'Interrupted' };
+
+/**
+ * Two lines under the orb: the task in the spotlight, and the node in the middle of its chain
+ * (the step under way by default; ← → move it), each with a mark saying how it stands.
+ */
+function glanceLines(root, g, s) {
+  const task = root.querySelector('.gx-task');
+  const step = root.querySelector('.gx-step');
+  const set = (el, html, tip) => {
+    if (el.__html !== html) {
+      el.innerHTML = html;
+      el.__html = html;
+    }
+    el.title = tip;
+  };
+  if (!g) {
+    set(task, '', '');
+    set(step, '', '');
+    return;
+  }
+  const ts = glanceTaskSt(g, s);
+  set(task, `${gxMark(ts)}<span class="gx-tx">${esc(g.title)}</span>`, `${GX_SAY[ts] ?? ''}: ${g.title}`);
+  // The chain's middle, once the task has unfolded in the spotlight (until then, the line keeps
+  // its place, empty, so nothing below it moves).
+  const f = S.gFocusNow;
+  const it = f?.goal === g.id ? S.gItemsNow?.[f.c] : null;
+  const say = it?.say;
+  if (!say) return set(step, '', '');
+  const text = clip(say.text.replace(/\s+/g, ' '), 300);
+  set(step, `${gxMark(say.st)}<small class="m-${say.st}">${esc(say.tag)}</small>${text ? `<span class="gx-tx">${esc(text)}</span>` : ''}`, `${say.tag}${text ? `: ${text}` : ''}`);
+}
+
+/** Subagents still at work, anywhere in the run (a background one can outlive the agent's turn). */
+const runningAgents = () =>
+  S.downAt || isStale() ? [] : Object.values(S.nodes).filter((n) => n.type === 'subtask' && n.origin === 'subagent' && n.status === 'active');
+
+const agentName = (a) => a.title.replace(/^Subagent:\s*/, '');
+
+/**
+ * Running subagents, at a glance: a tag on the orb's left (the side the question balloon doesn't
+ * use), there only while some run, naming the latest one, "+N" for the others. A click lists them
+ * all; picking one brings the step that launched it into the spotlight (see glancePickAgent).
+ */
+function glanceAgents(root) {
+  // Latest first.
+  const ags = runningAgents().sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+  const tag = root.querySelector('.gx-agents');
+  const pop = root.querySelector('.gx-agpop');
+  if (tag.hidden !== !ags.length) tag.hidden = !ags.length;
+  if (!ags.length) S.gAgOpen = false;
+  if (pop.hidden !== !S.gAgOpen) pop.hidden = !S.gAgOpen;
+  tag.setAttribute('aria-expanded', String(!!S.gAgOpen));
+  tag.classList.toggle('open', !!S.gAgOpen);
+  if (!ags.length) return;
+  const more = ags.length - 1;
+  const html = `<span class="gx-mk m-live" aria-hidden="true"></span><span class="gx-ag-t"><small>${more ? 'Subagents running' : 'Subagent running'}</small><span class="gx-ag-n"><span class="gx-tx">${esc(agentName(ags[0]))}</span>${more ? `<b>+${more}</b>` : ''}</span></span>`;
+  if (tag.__html !== html) {
+    tag.innerHTML = html;
+    tag.__html = html;
+  }
+  const tip = `${more ? `${ags.length} subagents are` : 'A subagent is'} still running${S.run.status === 'working' ? '' : ', after the agent finished its turn'}\nClick to see ${more ? 'them' : 'it'}`;
+  tag.title = tip;
+  tag.setAttribute('aria-label', tip);
+  if (!S.gAgOpen) return;
+  // The list: each subagent, how long it has run, and the task (and step) that launched it.
+  const rows = ags
+    .map((a) => {
+      const up = ancestors(a.id);
+      const step = up.find((n) => n.type === 'step');
+      const goal = up.find((n) => n.type === 'goal');
+      const where = [goal ? clip(goal.title, 60) : '', step ? clip(step.title, 60) : ''].filter(Boolean).join(' › ');
+      const acts = a.stats?.actions ?? 0;
+      return `<button type="button" class="gx-ag-row" role="menuitem" data-gpick="${a.id}" title="${esc(`${agentName(a)}\n${where}\nBring it into the spotlight`)}"><span class="gx-mk m-live" aria-hidden="true"></span><span class="gx-ag-t"><span class="gx-tx">${esc(agentName(a))}</span><small>${esc([a.startedAt ? dur(a.startedAt) : '', acts ? plural(acts, 'action') : '', where].filter(Boolean).join(' · '))}</small></span></button>`;
+    })
+    .join('');
+  if (pop.__html !== rows) {
+    pop.innerHTML = rows;
+    pop.__html = rows;
+  }
+}
+
+/**
+ * A subagent picked from the list: the wheel turns to its task, the chain centres on the step that
+ * launched it, and the side panel, if it's open, shows the subagent.
+ */
+function glancePickAgent(id) {
+  const a = N(id);
+  if (!a) return;
+  const up = ancestors(id);
+  const goal = up.find((n) => n.type === 'goal');
+  const step = up.find((n) => n.type === 'step');
+  S.gAgOpen = false;
+  if (goal) {
+    glanceSpot(goal.id);
+    S.gFocus = { goal: goal.id, key: step ? `s:${step.id}` : `w:${goal.id}` };
+  }
+  if (S.selected) {
+    // The panel follows the pick, not the task the wheel turned to (see renderGlance).
+    S.gOpened = goal?.id ?? null;
+    S.gAutoSel = null;
+    S.gPrevSel = null;
+    S.follow = false;
+    S.selected = id;
+    S.focus = null;
+  }
+  schedule();
 }
 
 /** Moving fast through the wheel: rows slide quicker so they keep up. */
@@ -1657,15 +1792,16 @@ function placeChain(row, g, items, unfold) {
   const keys = items.map((it) => it.key);
   // The node in the middle.
   let c = S.gFocus?.goal === g.id ? keys.indexOf(S.gFocus.key) : -1;
-  // By default: on a past task, your request (where it began); on the live one, the step under
+  // By default: on a past task, its goal (where it ended up); on the live one, the step under
   // way, its goal once it's done, or the latest step.
-  if (c < 0 && g.id !== (S.run.currentGoal ?? S.run.goals[S.run.goals.length - 1])) c = 0;
+  if (c < 0 && g.id !== (S.run.currentGoal ?? S.run.goals[S.run.goals.length - 1])) c = n - 1;
   if (c < 0 && (g.status === 'done' || g.status === 'failed')) c = n - 1;
   if (c < 0) {
     for (let i = n - 1; i >= 0 && c < 0; i--) if (items[i].st === 'live' || items[i].st === 'idle' || items[i].st === 'bad') c = i;
     if (c < 0) c = Math.max(0, n - 2);
   }
   S.gFocusNow = { goal: g.id, keys, c };
+  S.gItemsNow = items;
   const s = GLANCE_SLOT;
   const W = track.clientWidth;
   const mid = W / 2;
@@ -1835,6 +1971,8 @@ $('#pathView').addEventListener(
   'wheel',
   (e) => {
     if (S.view !== 'path' || S.layout !== 'glance' || e.ctrlKey) return;
+    // The running-subagents list scrolls on its own.
+    if (e.target instanceof Element && e.target.closest('.gx-agpop')) return;
     e.preventDefault();
     const now = Date.now();
     S.gWheel = (now - (S.gWheelAt ?? 0) > 400 ? 0 : (S.gWheel ?? 0)) + e.deltaY;
@@ -3815,8 +3953,18 @@ document.addEventListener('click', (e) => {
   if (!(t instanceof Element)) return;
   const on = (sel) => t.closest(sel);
   let el;
+  // The running-subagents list closes on a click anywhere else.
+  if (S.gAgOpen && !on('.gx-agpop') && !on('.gx-agents')) {
+    S.gAgOpen = false;
+    schedule();
+  }
   if (on('[data-glive]')) return void glanceMove(0);
   if ((el = on('[data-gspot]'))) return void glanceSpot(el.dataset.gspot);
+  if ((el = on('[data-gpick]'))) return void glancePickAgent(el.dataset.gpick);
+  if (on('.gx-agents')) {
+    S.gAgOpen = !S.gAgOpen;
+    return void schedule();
+  }
   if ((el = on('[data-copy]'))) {
     e.preventDefault();
     return void copyText(el);
@@ -4312,7 +4460,10 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'h' && S.run && S.view === 'path') toggleHeat();
   else if ((e.key === '-' || e.key === '=' || e.key === '+' || e.key === '0') && S.run && S.view === 'path' && S.layout === 'simple') zoomFlow(e.key === '-' ? -1 : e.key === '0' ? 0 : 1);
   else if (e.key === 't' && S.run?.usage) toggleTokens();
-  else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
+  else if (e.key === 'Escape' && S.gAgOpen) {
+    S.gAgOpen = false;
+    schedule();
+  } else if (e.key === 'Escape' && !$('#tokensPop').hidden) toggleTokens(false);
   else if (e.key === 'Escape' && !$('#wakePop').hidden) toggleWake(false);
   else if (e.key === 'Escape' && !$('#picker').open) {
     S.follow = false;

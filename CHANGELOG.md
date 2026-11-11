@@ -4,6 +4,15 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **Glance names the step too, and says how both stand.** Under the orb, the task in the spotlight and, on a second line, the node in the middle of its chain (the step under way by default, "Step 3 of 5"; `←` / `→` move it, and the line follows: your request, a reply, a round's end, the result). Each line has a status mark: a spinning ring while it runs, a tick when done, a cross when in trouble, a balloon when it asked you, a pause when interrupted, an empty ring for what hasn't started.
+- **Running subagents show in Glance.** While any runs, including in the background after the agent's turn ended, a tag beside the orb names the latest one, with "+N" for the others. Click it for the list of all of them (how long each has run, and the task and step that launched it); pick one and the wheel brings that step into the spotlight, and the side panel, if open, shows the subagent.
+
+### Changed
+
+- **An earlier task in the Glance spotlight centres on its goal**, where it ended up, instead of your request; with the side panel open, the goal is the one selected, and the panel shows the task with its result highlighted.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added

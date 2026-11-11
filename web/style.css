@@ -1118,8 +1118,55 @@ pre .dh { color: var(--faint); font-weight: 600; }
 @keyframes gx-breathe { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--oc) 32%, transparent); } 50% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--oc) 0%, transparent); } }
 .gx-state.off .gx-orb { box-shadow: 0 0 0 2px var(--border-strong); }
 .gx-time { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.3em; }
-.gx-title { max-width: min(70ch, 92%); font-size: 13.5px; color: var(--faint); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.3em; }
+/* Under the orb: the task in the spotlight, and the node in the middle of its chain (the step
+   under way, by default), each with a mark saying how it stands. */
+.gx-lines { width: 100%; margin-top: -6px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.gx-line { max-width: min(80ch, 92%); min-height: 20px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.gx-line .gx-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gx-task { font-size: 14.5px; font-weight: 550; color: var(--muted); }
+.gx-step { font-size: 13px; color: var(--faint); }
+.gx-step small { flex: none; font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mc, var(--faint)); }
+.gx-mk { --mc: var(--faint); flex: none; box-sizing: border-box; width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; color: var(--mc); }
+.gx-step .gx-mk { width: 15px; height: 15px; }
+.gx-mk svg { width: 66%; height: 66%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.m-live, .m-idle { --mc: var(--accent); }
+.m-done { --mc: var(--done); }
+.m-bad { --mc: var(--bad); }
+.m-ask { --mc: var(--amber); }
+.m-wait, .m-pend, .m-you { --mc: var(--faint); }
+.gx-mk.m-done, .gx-mk.m-bad, .gx-mk.m-ask { background: color-mix(in srgb, var(--mc) 18%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--mc) 55%, transparent); }
+.gx-mk.m-ask svg { width: 80%; height: 80%; stroke-width: 2.2; }
+.gx-mk.m-you svg { width: 88%; height: 88%; stroke-width: 2; }
+.gx-mk.m-wait svg { width: 72%; height: 72%; }
+/* Running: a spinning ring. Under way but quiet: the ring, still and dashed. Not started: a plain ring. */
+.gx-mk.m-live { border: 2px solid color-mix(in srgb, var(--mc) 22%, transparent); border-top-color: var(--mc); animation: spin 0.9s linear infinite; }
+.gx-mk.m-idle { border: 1.6px dashed var(--mc); }
+.gx-mk.m-pend { border: 1.6px solid var(--mc); }
 
+/* Subagents still running: a tag on the orb's left, only while some run, naming the latest one
+   ("+N" for the others); a click lists them all. */
+.gx-agents { --mc: var(--agent); position: absolute; right: calc(50% + 84px); top: 36px; width: max-content; max-width: min(300px, calc(50vw - 140px)); padding: 7px 13px 8px 10px;
+  display: flex; align-items: center; gap: 9px; border: 1.5px solid color-mix(in srgb, var(--agent) 70%, transparent); border-radius: 14px;
+  background: color-mix(in srgb, var(--agent) 9%, var(--surface)); color: var(--text); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; cursor: pointer;
+  transform-origin: right center; animation: gx-agents-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1); transition: background 0.2s, box-shadow 0.2s; }
+.gx-agents:hover, .gx-agents.open { background: color-mix(in srgb, var(--agent) 16%, var(--surface)); }
+.gx-agents.open { box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent) 22%, transparent); }
+.gx-agents[hidden], .gx-agpop[hidden] { display: none; }
+.gx-ag-t { min-width: 0; display: flex; flex-direction: column; }
+.gx-agents small { font-size: 10.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--agent); }
+.gx-ag-n { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+.gx-ag-t .gx-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gx-ag-n b { flex: none; padding: 0 6px; border-radius: 999px; background: var(--agent); color: #fff; font-size: 11px; font-weight: 650; line-height: 17px; }
+@keyframes gx-agents-in { from { opacity: 0; transform: scale(0.6) translateX(12px); } }
+/* The list: under the tag, scrolling when long. */
+.gx-agpop { --mc: var(--agent); position: absolute; right: calc(50% + 84px); top: 92px; z-index: 5; width: 340px; max-width: calc(50vw - 110px); max-height: 280px; overflow-y: auto;
+  padding: 5px; border: 1px solid color-mix(in srgb, var(--agent) 40%, var(--border)); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 16px 40px -16px rgb(0 0 0 / 0.45); animation: gx-pop-in 0.18s ease-out; }
+@keyframes gx-pop-in { from { opacity: 0; transform: translateY(-6px); } }
+.gx-ag-row { width: 100%; padding: 7px 9px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.gx-ag-row:hover, .gx-ag-row:focus-visible { background: color-mix(in srgb, var(--agent) 12%, var(--surface)); outline: none; }
+.gx-agents .gx-mk.m-live, .gx-agpop .gx-mk.m-live { --mc: var(--agent); }
+.gx-ag-row small { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The current task: its chain, larger, every node sized so the whole task fits the width. */
 /* The spotlight's chain: one row, one node in the middle, start and end always in view;
    placeChain() sets each node's place and opacity. */
@@ -1178,7 +1225,7 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .gx-state.away .gx-orb { opacity: 0.8; }
 .gx-state.away .gx-orb:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .gx-orb::before, .gx-orb.swap svg, .gx-ask { animation: none !important; }
+  .gx-orb::before, .gx-orb.swap svg, .gx-ask, .gx-agents, .gx-agpop, .gx-mk { animation: none !important; }
   .gx-track > .fn { transition: none; }
   .gx-track > .fn.gx-new .fn-s, .gx-track > .fn.gx-new .fn-l { animation: none; }
 }
