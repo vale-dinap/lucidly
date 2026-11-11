@@ -4134,9 +4134,16 @@ $('#pathView').addEventListener(
 
 // ───────────────────────────── theme
 const THEMES = {
-  system: { label: 'System', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.5" /><path d="M9 20h6M12 16v4" /></svg>' },
+  // Light or dark, as the system says: the Light and Dark icons, pushed apart into opposite corners
+  // and cut along a "/" diagonal, the sun above the cut and the moon (flipped, so it faces the
+  // sun) below it.
+  system: {
+    label: 'System',
+    icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><clipPath id="thSun"><path d="M0 0h22.3L0 22.3z" /></clipPath><clipPath id="thMoon"><path d="M24 1.7V24H1.7z" /></clipPath><g clip-path="url(#thSun)"><g transform="translate(-2.26 -2.26) scale(.88)" stroke-width="2.05"><circle cx="12" cy="12" r="3.8" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" /></g></g><g clip-path="url(#thMoon)"><path transform="translate(5.24 5.24) scale(.88) translate(24 0) scale(-1 1)" stroke-width="2.05" d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" /></g></svg>',
+  },
   light: { label: 'Light', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.8" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" /></svg>' },
-  dark: { label: 'Dark', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" /></svg>' },
+  // The moon faces left, as in the System icon.
+  dark: { label: 'Dark', icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path transform="translate(24 0) scale(-1 1)" d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" /></svg>' },
 };
 const THEME_ORDER = ['system', 'light', 'dark'];
 const darkMedia = matchMedia('(prefers-color-scheme: dark)');
