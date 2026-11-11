@@ -1280,3 +1280,23 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .plist .pnew:hover { background: var(--accent-bg); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
 .picker-hint { flex: none; padding: 0 18px 8px; color: var(--faint); font-size: 11.5px; }
 .picker-hint:empty { display: none; }
+
+/* ───────── sound alerts (the bell next to keep awake) */
+.snd { color: var(--faint); }
+.snd svg { width: 19px; height: 19px; stroke-width: 1.7; }
+.snd .waves { opacity: 0; transition: opacity 0.2s; }
+.snd .mute { opacity: 0; }
+.snd[data-snd='off'] .mute { opacity: 1; }
+.snd[data-snd='on'] { color: var(--accent); }
+.snd[data-snd='on'] .waves { opacity: 1; }
+.snd[data-snd='wait'] { color: var(--warn); }
+.snd[data-snd='err'] { color: var(--bad); }
+.sn-ev { display: flex; align-items: flex-start; gap: 10px; }
+.sn-ev .wk-opt { flex: 1; }
+.sn-ev .tbtn { flex: none; height: 24px; padding: 0 9px; font-size: 12px; margin-top: -2px; }
+.sn-away { padding-top: 10px; border-top: 1px solid var(--border); }
+.sn-vol { display: flex; align-items: center; gap: 10px; margin: 0 0 10px 2px; font-size: 12.5px; color: var(--muted); }
+.sn-vol input { flex: 1; accent-color: var(--accent); }
+.wk-st.st-on { color: var(--text); }
+.wk-st.st-on i { background: var(--accent); }
+.wk-st.st-wait i { background: var(--warn); }
