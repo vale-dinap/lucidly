@@ -108,6 +108,8 @@ Why a local web app:
 
 Protocol: `GET /api/s/:id/stream` (SSE) sends a full snapshot, then patches (changed nodes only), throttled. Raw text is never in the stream; `GET /api/s/:id/raw/:nodeId` fetches it when an item is expanded.
 
+Session tabs: only the tab on screen holds a run's full stream. `GET /api/tabs/stream?client=<page id>&runs=<ids>` (SSE, event `tabs`) sends the state of every run in the page's tabs (`core/summary.ts`: the reading of Glance's orb, plus running subagents and the title), then only what changed, also as time passes (working turns quiet, finished turns old). A run closed elsewhere is reported `gone`, and the page reopens it from its session file. `DELETE /api/s/:id?client=<page id>` closes a tab: the run stops unless another page shows it or has it in a tab. A run that can be opened again from its file stops by itself once no page has shown or listed it for 10 minutes.
+
 ## 5. Persistence
 
 State lives in RAM for the session. Because state is *derived from the event log*, saving means writing `{format, version, meta, events}` to a `.lucidly.json` file, and resuming means replaying it. This keeps save files agent-agnostic and lets future engine improvements re-render old runs better.

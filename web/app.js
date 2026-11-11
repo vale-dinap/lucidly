@@ -2410,7 +2410,7 @@ function renderHeader() {
   const r = S.run;
   $('#runTitle').textContent = r ? (r.title ?? r.cwd ?? 'Untitled run') : 'No run open';
   $('#runSub').textContent = r ? [r.cwd, r.updatedAt ? `updated ${ago(r.updatedAt)}` : ''].filter(Boolean).join(' · ') : '';
-  document.title = r?.title ? `${r.title} · Lucidly` : 'Lucidly';
+  pageTitle();
   const [st, text] = runState();
   $('#status').dataset.status = st;
   $('#statusText').textContent = text;
@@ -3499,14 +3499,17 @@ function render() {
 }
 
 // ───────────────────────────── connection
-function connect(runId) {
+function connect(runId, restore = null) {
   S.es?.close();
   // A session opens at the top, on the timeline; the arrow button (or F) jumps to the end.
   Object.assign(S, { runId, run: null, nodes: {}, selected: null, follow: false, raw: new Map(), lastFollowTarget: null, expandAll: null, firstPaint: true, seenActs: null });
   for (const set of [S.openGoals, S.closedGoals, S.openSteps, S.closedSteps, S.allActs, S.openActs, S.closedActs]) set.clear();
   Object.assign(S, { actions: null, actionsStale: true, actionsLimit: 400, stripRows: [], zoom: { a: 0, b: 1 } });
+  // Back on a tab: its place is put back once its data is in (see restoreTab).
+  S.restore = restore;
+  if (restore) S.view = restore.view;
   writeHash();
-  const es = new EventSource(`/api/s/${runId}/stream`);
+  const es = new EventSource(`/api/s/${runId}/stream?client=${CLIENT}`);
   S.es = es;
   es.addEventListener('open', () => setDown(false));
   es.addEventListener('snapshot', (e) => {
@@ -3514,8 +3517,10 @@ function connect(runId) {
     S.run = snap.run;
     S.nodes = snap.nodes;
     S.actionsStale = true;
+    if (S.restore) restoreTab();
     for (const v of S.raw.values()) v.stale = true;
     schedule();
+    renderTabs();
   });
   es.addEventListener('patch', (e) => {
     const p = JSON.parse(e.data);
@@ -3540,17 +3545,280 @@ function connect(runId) {
       setDown(false);
       if (!runs.some((r) => r.id === runId) && S.runId === runId) {
         es.close();
-        S.run = null;
-        S.runId = null;
-        history.replaceState(null, '', '#');
-        schedule();
-        openPicker();
+        tabGone(runId);
       }
     } catch {
       // The server is gone: say so. EventSource keeps retrying, and reconnects when it is back.
       setDown(true);
     }
   };
+}
+
+// ───────────────────────────── session tabs
+/*
+ * Several sessions open at once, one tab each. Only the tab you're on is fully loaded (its own
+ * stream, as before); the others get their state (working, your turn, done...) from one light
+ * stream for all of them (/api/tabs/stream), so their dots stay live. Switching saves where you
+ * were in the tab you leave (view, selection, spotlight, scroll) and puts it back when you return.
+ *
+ * Picking a session replaces the one in the current tab; Ctrl/⌘-click, a middle click, the row's
+ * "new tab" button or the strip's + open it in a new tab. A session already in a tab is never
+ * opened twice: picking it switches to its tab. Closing a tab stops its session on the server,
+ * unless another page has it too. The strip shows from two tabs on; the tabs are kept per browser
+ * tab (sessionStorage), by session file, so they come back after a reload or a server restart.
+ */
+const CLIENT = (() => {
+  const make = () => globalThis.crypto?.randomUUID?.() ?? `c${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  try {
+    let id = sessionStorage.getItem('lucidly.client');
+    if (!id) sessionStorage.setItem('lucidly.client', (id = make()));
+    return id;
+  } catch {
+    return make();
+  }
+})();
+
+const T = { tabs: [], active: null, seq: 0, es: null, esIds: '' };
+/** A tab not on screen that turns one of these wants you: it flashes, then glows until you open it. */
+const TAB_ATTN = new Set(['you', 'bad', 'done']);
+/** How long it flashes (the CSS animation: 4 × 0.8s). */
+const TAB_FLASH_MS = 3200;
+const TAB_SAY = { work: 'Working', you: 'Your turn: it asked you', bad: 'Working, with failures', done: 'Finished', rest: 'Finished a while ago', quiet: 'Quiet', paused: 'Interrupted' };
+// What a tab keeps of where you were.
+const TAB_KEEP = ['selected', 'follow', 'expandAll', 'layout', 'pf', 'af', 'ff', 'zoom', 'focus', 'flowPick', 'gSpot', 'gFocus', 'gOpened', 'gPrevSel', 'gAutoSel'];
+const TAB_SETS = ['openGoals', 'closedGoals', 'openSteps', 'closedSteps', 'allActs', 'openActs', 'closedActs'];
+
+const activeTab = () => T.tabs.find((t) => t.uid === T.active) ?? null;
+const tabOf = (runId) => T.tabs.find((t) => t.runId === runId) ?? null;
+const samePath = (a, b) => !!a && !!b && a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
+const tabOfPath = (path) => T.tabs.find((t) => samePath(t.path, path)) ?? null;
+const newTab = (runId, o = {}) => ({ uid: ++T.seq, runId, path: o.path ?? null, title: o.title ?? '', sum: null, attn: false, flashAt: 0, state: null });
+
+function saveTabs() {
+  try {
+    const i = T.tabs.findIndex((t) => t.uid === T.active);
+    sessionStorage.setItem('lucidly.tabs', JSON.stringify({ tabs: T.tabs.map((t) => ({ runId: t.runId, path: t.path, title: t.title })), active: i }));
+  } catch {
+    // Storage blocked: the tabs just won't survive a reload.
+  }
+}
+
+function loadTabs() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem('lucidly.tabs') ?? 'null');
+    return v && Array.isArray(v.tabs) ? v : { tabs: [], active: -1 };
+  } catch {
+    return { tabs: [], active: -1 };
+  }
+}
+
+/** Where you are in the session on screen, to put back when you return to its tab. */
+function tabState() {
+  const st = { view: S.view, top: $('#pane').scrollTop, raw: S.raw };
+  for (const k of TAB_KEEP) st[k] = S[k] && typeof S[k] === 'object' ? structuredClone(S[k]) : S[k];
+  for (const k of TAB_SETS) st[k] = new Set(S[k]);
+  return st;
+}
+
+/** Called with the session's first data, once back on its tab (see connect). */
+function restoreTab() {
+  const st = S.restore;
+  S.restore = null;
+  for (const k of TAB_KEEP) S[k] = st[k];
+  for (const k of TAB_SETS) S[k] = st[k];
+  S.raw = st.raw;
+  S.view = st.view;
+  S.firstPaint = false;
+  // Following finds its own place; otherwise the scroll position comes back once drawn.
+  requestAnimationFrame(() => requestAnimationFrame(() => S.follow || ($('#pane').scrollTop = st.top)));
+}
+
+/** Shows a tab's session (saving where you were in the one you leave). */
+function showTab(tab) {
+  if (!tab) return;
+  if (T.active === tab.uid && S.runId === tab.runId) return;
+  const cur = activeTab();
+  if (cur && cur !== tab && S.run && S.runId === cur.runId) cur.state = tabState();
+  T.active = tab.uid;
+  tab.attn = false;
+  S.gAgOpen = false;
+  connect(tab.runId, tab.state);
+  tab.state = null;
+  renderTabs();
+  saveTabs();
+}
+
+/**
+ * Shows a run: switches to its tab if one has it; otherwise opens it in a new tab (`newTab`, or
+ * when there's none yet) or in place of the current tab's session, which then stops.
+ */
+function openRun(runId, o = {}) {
+  const have = tabOf(runId) ?? (o.path ? tabOfPath(o.path) : null);
+  if (have) {
+    have.runId = runId;
+    showTab(have);
+    return tabsChanged();
+  }
+  const cur = activeTab();
+  if (cur && !o.newTab) {
+    const old = cur.runId;
+    Object.assign(cur, newTab(runId, o), { uid: cur.uid });
+    T.active = null;
+    showTab(cur);
+    releaseRun(old);
+  } else {
+    const t = newTab(runId, o);
+    // A new tab goes right after the current one.
+    const i = cur ? T.tabs.indexOf(cur) + 1 : T.tabs.length;
+    T.tabs.splice(i, 0, t);
+    showTab(t);
+  }
+  tabsChanged();
+}
+
+/** The run stops on the server, unless another tab or page still has it. */
+function releaseRun(runId) {
+  if (!runId || tabOf(runId)) return;
+  fetch(`/api/s/${runId}?client=${encodeURIComponent(CLIENT)}`, { method: 'DELETE' }).catch(() => {});
+}
+
+function closeTab(tab) {
+  const i = T.tabs.indexOf(tab);
+  if (i < 0) return;
+  T.tabs.splice(i, 1);
+  if (T.active === tab.uid) {
+    T.active = null;
+    const next = T.tabs[i] ?? T.tabs[i - 1];
+    if (next) showTab(next);
+    else closeAll();
+  }
+  releaseRun(tab.runId);
+  tabsChanged();
+}
+
+/** No tab left: the page is empty, and asks which session to open. */
+function closeAll() {
+  S.es?.close();
+  S.es = null;
+  Object.assign(S, { runId: null, run: null, nodes: {}, selected: null, restore: null });
+  history.replaceState(null, '', '#');
+  schedule();
+  openPicker();
+}
+
+/**
+ * A tab's run is gone from the server (it restarted, or closed it): a session file is opened
+ * again, in the same tab; a run that can't be (a saved snapshot, a stream) closes its tab.
+ */
+async function tabGone(runId) {
+  const tab = tabOf(runId);
+  if (!tab) {
+    if (S.runId === runId) closeAll();
+    return;
+  }
+  if (tab.reopening) return;
+  tab.reopening = true;
+  let id = null;
+  if (tab.path) {
+    try {
+      const res = await fetch('/api/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: tab.path }) });
+      if (res.ok) id = (await res.json()).run.id;
+    } catch {
+      // The server is down: the page says so (setDown), and the tab waits for it.
+      tab.reopening = false;
+      return;
+    }
+  }
+  tab.reopening = false;
+  if (!id) return closeTab(tab);
+  const shown = T.active === tab.uid;
+  const st = shown && S.run ? tabState() : tab.state;
+  tab.runId = id;
+  if (shown) {
+    connect(id, st);
+    tab.state = null;
+  }
+  tabsChanged();
+}
+
+/** The tab set changed: keep it, and follow the states of exactly these runs. */
+function tabsChanged() {
+  saveTabs();
+  renderTabs();
+  const ids = T.tabs.map((t) => t.runId).join(',');
+  if (T.es && T.esIds === ids) return;
+  T.es?.close();
+  T.es = null;
+  T.esIds = ids;
+  if (!ids) return;
+  const es = new EventSource(`/api/tabs/stream?client=${encodeURIComponent(CLIENT)}&runs=${ids}`);
+  T.es = es;
+  es.addEventListener('tabs', (e) => {
+    const { runs } = JSON.parse(e.data);
+    for (const [id, sum] of Object.entries(runs)) {
+      const tab = tabOf(id);
+      if (!tab) continue;
+      if (sum.gone) {
+        void tabGone(id);
+        continue;
+      }
+      const before = tab.sum?.state;
+      tab.sum = sum;
+      if (sum.title) tab.title = sum.title;
+      if (before && before !== sum.state && TAB_ATTN.has(sum.state) && (tab.uid !== T.active || document.hidden)) {
+        tab.attn = true;
+        tab.flashAt = Date.now();
+        setTimeout(renderTabs, TAB_FLASH_MS + 50);
+      }
+      if (!TAB_ATTN.has(sum.state)) tab.attn = false;
+    }
+    renderTabs();
+    saveTabs();
+  });
+}
+
+// Back on the page: the tab on screen no longer needs to call you.
+document.addEventListener('visibilitychange', () => {
+  const t = activeTab();
+  if (!document.hidden && t?.attn) {
+    t.attn = false;
+    renderTabs();
+  }
+});
+
+function renderTabs() {
+  const bar = $('#tabs');
+  bar.hidden = T.tabs.length < 2;
+  const act = activeTab();
+  const now = Date.now();
+  const html =
+    T.tabs
+      .map((t) => {
+        const on = t === act;
+        const title = (on && S.run?.title) || t.title || 'Untitled session';
+        const st = t.sum?.state ?? 'quiet';
+        const say = TAB_SAY[st] ?? '';
+        const q = st === 'you' && t.sum?.question ? `: “${clip(t.sum.question, 160)}”` : '';
+        const ag = t.sum?.agents ? ` · ${plural(t.sum.agents, 'subagent')} running` : '';
+        const tip = `${title}\n${say}${q}${ag}`;
+        return `<div class="tab${on ? ' on' : ''}${t.attn ? ' attn' : ''}${t.attn && now - t.flashAt < TAB_FLASH_MS ? ' flash' : ''}" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-tab="${t.uid}" title="${esc(tip)}"><span class="tdot s-${st}" aria-label="${esc(say)}"></span><span class="tt">${esc(title)}</span>${t.sum?.agents ? `<span class="tag" aria-hidden="true">${t.sum.agents}</span>` : ''}<button type="button" class="tx" data-tabx="${t.uid}" aria-label="Close tab" title="Close tab">${CLOSE}</button></div>`;
+      })
+      .join('') + `<button type="button" class="tab-add" data-tabadd title="Open a session in a new tab" aria-label="Open a session in a new tab">${SVG('M12 5v14M5 12h14')}</button>`;
+  fill(bar, html);
+  pageTitle();
+}
+
+/** The page's title: the session on screen, after how many tabs want you, if any. */
+function pageTitle() {
+  const name = S.run && (S.run.title ?? activeTab()?.title);
+  const n = T.tabs.filter((t) => t.attn).length;
+  document.title = `${n ? `(${n}) ` : ''}${name ? `${name} · Lucidly` : 'Lucidly'}`;
+}
+
+function cycleTab(by) {
+  const i = T.tabs.indexOf(activeTab());
+  if (T.tabs.length < 2 || i < 0) return;
+  showTab(T.tabs[(i + by + T.tabs.length) % T.tabs.length]);
 }
 
 // ───────────────────────────── picker
@@ -3561,11 +3829,18 @@ function connect(runId) {
  * one leaves the list as it was (the server-stopped bar says why).
  */
 const PICKER_REFRESH = 4000;
-async function openPicker({ quiet = false } = {}) {
+async function openPicker({ quiet = false, newTab = false } = {}) {
   const dlg = $('#picker');
   if (!dlg.open) {
     if (quiet) return;
     dlg.showModal();
+  }
+  if (!quiet) {
+    // From the strip's +, what you pick opens in a new tab; otherwise it replaces this tab's session.
+    S.pickNew = newTab && T.tabs.length > 0;
+    $('#pickerTitle').textContent = S.pickNew ? 'Open in a new tab' : 'Open session';
+    const mod = /Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘' : 'Ctrl';
+    $('#pickerHint').textContent = T.tabs.length && !S.pickNew ? `${mod}-click or middle-click a session to open it in a new tab.` : '';
   }
   S.pickerTimer ??= setInterval(() => {
     if (!dlg.open) S.pickerTimer = void clearInterval(S.pickerTimer);
@@ -3616,10 +3891,14 @@ function fill(el, html) {
 function sessionRow(s, withDir) {
   const title = s.title ?? s.firstPrompt ?? s.id;
   const sub = [s.title ? s.firstPrompt : '', withDir ? s.cwd ?? s.project : ''].filter(Boolean).join(' · ');
-  return `<li data-path="${esc(s.path)}" title="${esc(s.path)}">
+  // A session already in a tab: picking it switches to that tab.
+  const tab = tabOfPath(s.path);
+  const mark = tab ? `<span class="pin-tab">${tab === activeTab() ? 'Showing' : 'In a tab'}</span>` : '';
+  const add = tab ? '' : `<button type="button" class="pnew" data-newtab title="Open in a new tab" aria-label="Open in a new tab">${SVG('M12 5v14M5 12h14')}</button>`;
+  return `<li data-path="${esc(s.path)}" title="${esc(s.path)}"${tab ? ' class="intab"' : ''}>
         <span class="dot${s.live ? ' live' : ''}" title="${s.live ? 'Active in the last few minutes' : ''}"></span>
         <div class="pm"><div class="pt">${esc(title)}</div><div class="ps">${esc(sub)}</div></div>
-        <span class="pw">${esc(ago(s.mtime))}</span></li>`;
+        ${mark}<span class="pw">${esc(ago(s.mtime))}</span>${T.tabs.length ? add : ''}</li>`;
 }
 
 /** A directory as a comparable key: forward slashes, no trailing slash, any case on Windows. */
@@ -3668,12 +3947,15 @@ function sessionListHtml(data) {
   );
 }
 
-async function openSession(path) {
+async function openSession(path, newTab = false) {
+  $('#picker').close();
+  // Already in a tab: switch to it.
+  const have = tabOfPath(path);
+  if (have && T.tabs.includes(have)) return showTab(have);
   const res = await fetch('/api/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path }) });
   const data = await res.json();
   if (!res.ok) return alert(data.error ?? 'Could not open the session');
-  $('#picker').close();
-  connect(data.run.id);
+  openRun(data.run.id, { path: data.run.path ?? path, title: data.run.title, newTab: newTab || S.pickNew });
 }
 
 async function loadFile(file) {
@@ -3681,7 +3963,7 @@ async function loadFile(file) {
   const res = await fetch('/api/load', { method: 'POST', headers: { 'content-type': 'application/json' }, body: text });
   const data = await res.json();
   if (!res.ok) return alert(data.error ?? 'Could not load the file');
-  connect(data.run.id);
+  openRun(data.run.id, { title: data.run.title ?? data.run.label, newTab: S.pickNew });
 }
 
 // ───────────────────────────── interaction
@@ -4172,11 +4454,14 @@ document.addEventListener('click', (e) => {
     }
     return renderDetail();
   }
-  if ((el = on('#picker li[data-path]'))) return void openSession(el.dataset.path);
+  if ((el = on('#picker li[data-path]'))) return void openSession(el.dataset.path, !!on('[data-newtab]') || e.ctrlKey || e.metaKey);
   if ((el = on('#picker li[data-run]'))) {
     $('#picker').close();
-    return connect(el.dataset.run);
+    return openRun(el.dataset.run, { title: el.querySelector('.pt')?.textContent, newTab: S.pickNew || e.ctrlKey || e.metaKey });
   }
+  if ((el = on('[data-tabx]'))) return closeTab(T.tabs.find((t) => t.uid === Number(el.dataset.tabx)));
+  if (on('[data-tabadd]')) return void openPicker({ newTab: true });
+  if ((el = on('[data-tab]'))) return showTab(T.tabs.find((t) => t.uid === Number(el.dataset.tab)));
   if (on('[data-picker-retry]')) return void openPicker();
   if ((el = on('[data-pgroup]'))) {
     S.pgOpen ??= new Map();
@@ -4418,6 +4703,18 @@ function updateCompact() {
 }
 $('#pane').addEventListener('scroll', () => requestAnimationFrame(updateCompact), { passive: true });
 $('#sessionsBtn').addEventListener('click', () => openPicker());
+// A middle click closes a tab, or opens a session in a new tab.
+document.addEventListener('auxclick', (e) => {
+  if (e.button !== 1) return;
+  const tab = e.target.closest?.('[data-tab]');
+  const row = e.target.closest?.('#picker li[data-path]');
+  if (!tab && !row) return;
+  e.preventDefault();
+  if (tab) closeTab(T.tabs.find((t) => t.uid === Number(tab.dataset.tab)));
+  else void openSession(row.dataset.path, true);
+});
+// No page scrolling on a middle press over them (the browser's autoscroll).
+document.addEventListener('mousedown', (e) => e.button === 1 && e.target.closest?.('[data-tab], #picker li[data-path]') && e.preventDefault());
 $('#runBox').addEventListener('click', () => openPicker());
 $('#loadInput').addEventListener('change', (e) => {
   const f = e.target.files?.[0];
@@ -4456,6 +4753,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     $(S.view === 'path' ? '#pathSearch' : '#actionsSearch').focus();
   } else if (e.key === 'o') openPicker();
+  else if (e.key === '[' || e.key === ']') cycleTab(e.key === '[' ? -1 : 1);
   else if (e.key === 'p' && S.run) togglePin();
   else if (e.key === 'h' && S.run && S.view === 'path') toggleHeat();
   else if ((e.key === '-' || e.key === '=' || e.key === '+' || e.key === '0') && S.run && S.view === 'path' && S.layout === 'simple') zoomFlow(e.key === '-' ? -1 : e.key === '0' ? 0 : 1);
@@ -4481,10 +4779,32 @@ setInterval(() => S.run && renderHeader(), 15000);
   const m = /run=([\w-]+)/.exec(location.hash);
   const { runs } = await fetch('/api/runs').then((r) => r.json());
   if (location.hash.includes('view=actions')) S.view = 'actions';
+  const kept = loadTabs();
+  let active = null;
+  for (const [i, k] of kept.tabs.entries()) {
+    // Run ids start again from r1 when the server restarts: one counts only if it's the same session.
+    let id = runs.find((r) => r.id === k.runId && (k.path ? samePath(r.path, k.path) : !r.path))?.id ?? null;
+    if (!id && k.path) {
+      try {
+        const res = await fetch('/api/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: k.path }) });
+        if (res.ok) id = (await res.json()).run.id;
+      } catch {
+        // Gone: the tab is dropped.
+      }
+    }
+    if (!id || tabOf(id)) continue;
+    const t = newTab(id, k);
+    T.tabs.push(t);
+    if (i === kept.active) active = t;
+  }
   const wanted = m && runs.find((r) => r.id === m[1]);
-  if (wanted) connect(wanted.id);
-  else if (runs.length) connect(runs[runs.length - 1].id);
-  else {
+  if (T.tabs.length) {
+    showTab(active ?? T.tabs[0]);
+    tabsChanged();
+  } else if (wanted || runs.length) {
+    const r = wanted ?? runs[runs.length - 1];
+    openRun(r.id, { path: r.path, title: r.title ?? r.label });
+  } else {
     // The server opened nothing (no obvious session for this folder): let the user choose.
     render();
     openPicker();

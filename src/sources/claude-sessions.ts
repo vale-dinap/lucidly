@@ -220,7 +220,7 @@ export class ClaudeSessionSource implements Source {
   readonly live: boolean;
   readonly key: string;
   label: string;
-  private readonly path: string;
+  readonly path: string;
   private tailers: LineTailer[] = [];
   private subagents = new Set<string>();
   /** Agent/Task calls from the main transcript: tool_use id -> normalized prompt. */

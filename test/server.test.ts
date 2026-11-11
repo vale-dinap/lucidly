@@ -146,3 +146,89 @@ test('writes require JSON and same origin', async () => {
   const badFile = await call('POST', '/api/load', { hello: 1 });
   assert.equal(badFile.status, 400);
 });
+
+/** Reads a tab stream until `want` matches a "tabs" event, then hands it back (the stream stays open). */
+function tabStream(client: string, runs: string[]) {
+  const events: any[] = [];
+  let waiters: (() => void)[] = [];
+  const req = request({ host: '127.0.0.1', port: server.port, path: `/api/tabs/stream?client=${client}&runs=${runs.join(',')}` }, (res) => {
+    let buf = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => {
+      buf += c;
+      let m;
+      while ((m = /event: tabs\ndata: (.*)\n\n/.exec(buf))) {
+        events.push(JSON.parse(m[1]));
+        buf = buf.slice(m.index + m[0].length);
+        for (const w of waiters) w();
+      }
+    });
+  });
+  req.on('error', () => {});
+  req.end();
+  const next = (pred: (e: any) => boolean) =>
+    new Promise<any>((ok, fail) => {
+      const timer = setTimeout(() => fail(new Error('no matching tabs event within 3s')), 3000);
+      const check = () => {
+        const e = events.find(pred);
+        if (e) {
+          clearTimeout(timer);
+          waiters = waiters.filter((w) => w !== check);
+          ok(e);
+        }
+      };
+      waiters.push(check);
+      check();
+    });
+  return { next, close: () => req.destroy() };
+}
+
+test('session tabs: a live state per run, and a run closes once no tab has it', async () => {
+  const opened = await call('POST', '/api/open', { path: fixture });
+  const run = JSON.parse(opened.body).run;
+  assert.equal(run.path, fixture, 'a session file run says where it came from');
+  const id = run.id;
+
+  const a = tabStream('page-a', [id]);
+  const first = await a.next((e) => e.runs[id]);
+  assert.equal(first.runs[id].title, 'Signup form validation');
+  assert.ok(['work', 'you', 'bad', 'done', 'rest', 'quiet', 'paused'].includes(first.runs[id].state));
+
+  const b = tabStream('page-b', [id]);
+  await b.next((e) => e.runs[id]);
+  // Page A closes its tab: page B still has it, so it stays.
+  const r1 = JSON.parse((await call('DELETE', `/api/s/${id}?client=page-a`)).body);
+  assert.equal(r1.closed, false);
+  assert.ok(server.runs.has(id));
+  // Page B closes it too: nobody has it any more.
+  const r2 = JSON.parse((await call('DELETE', `/api/s/${id}?client=page-b`)).body);
+  assert.equal(r2.closed, true);
+  assert.ok(!server.runs.has(id));
+  a.close();
+  b.close();
+  // Opening it again gives a new run.
+  const again = JSON.parse((await call('POST', '/api/open', { path: fixture })).body).run;
+  assert.notEqual(again.id, id);
+});
+
+test('session tabs: a run closed elsewhere is reported gone', async () => {
+  const id = JSON.parse((await call('POST', '/api/open', { path: fixture })).body).run.id;
+  const a = tabStream('page-c', [id]);
+  await a.next((e) => e.runs[id]?.title);
+  server.closeRun(id);
+  const gone = await a.next((e) => e.runs[id]?.gone);
+  assert.equal(gone.runs[id].gone, true);
+  a.close();
+});
+
+test('a session file run nobody has looked at for a while is closed; a saved run is kept', async () => {
+  const { IDLE_CLOSE_MS } = await import('../src/server/server.ts');
+  const id = JSON.parse((await call('POST', '/api/open', { path: fixture })).body).run.id;
+  const saved = await call('GET', `/api/s/${id}/save`);
+  const kept = JSON.parse((await call('POST', '/api/load', JSON.parse(saved.body))).body).run.id;
+  (server as any).tick(Date.now() + IDLE_CLOSE_MS / 2);
+  assert.ok(server.runs.has(id), 'not idle long enough yet');
+  (server as any).tick(Date.now() + IDLE_CLOSE_MS + 1000);
+  assert.ok(!server.runs.has(id), 'idle: closed (it can be opened again from its file)');
+  assert.ok(server.runs.has(kept), 'a loaded snapshot has no file to come back from: kept');
+});

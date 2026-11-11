@@ -50,11 +50,29 @@ export interface LucidlyServerOptions {
   cwd: string;
 }
 
+/** A page's session tabs: the runs they hold, told about each one's state as it changes. */
+interface TabWatcher {
+  client: string;
+  runs: Set<string>;
+  send: (data: unknown) => void;
+  /** What it was last told, per run (JSON), so only changes are sent. */
+  last: Map<string, string>;
+}
+
+/** How often tab states are refreshed regardless of new events (they change with time too). */
+const TICK_MS = 15_000;
+/** A run no page has shown or listed for this long is closed (when it can be opened again). */
+export const IDLE_CLOSE_MS = 10 * 60 * 1000;
+
 export class LucidlyServer {
   readonly runs = new Map<string, RunSession>();
   private byKey = new Map<string, string>();
   private seq = 0;
   private server: Server | null = null;
+  private watchers = new Set<TabWatcher>();
+  /** Open event streams per run, ended when the run closes. */
+  private streams = new Map<string, Set<ServerResponse>>();
+  private ticker: NodeJS.Timeout | null = null;
   port = 0;
   readonly cwd: string;
   private readonly wantPort: number;
@@ -79,6 +97,8 @@ export class LucidlyServer {
             s.off('error', fail);
             this.server = s;
             this.port = (s.address() as { port: number }).port;
+            this.ticker = setInterval(() => this.tick(), TICK_MS);
+            this.ticker.unref();
             ok();
           });
         });
@@ -91,6 +111,7 @@ export class LucidlyServer {
   }
 
   async close(): Promise<void> {
+    if (this.ticker) clearInterval(this.ticker);
     for (const r of this.runs.values()) r.close();
     this.server?.closeAllConnections?.();
     await new Promise<void>((ok) => (this.server ? this.server.close(() => ok()) : ok()));
@@ -120,7 +141,53 @@ export class LucidlyServer {
     r.close();
     this.runs.delete(id);
     this.byKey.delete(r.key);
+    for (const res of this.streams.get(id) ?? []) res.end();
+    this.streams.delete(id);
+    // Tabs holding it hear that it's gone.
+    for (const w of this.watchers) if (w.runs.has(id)) this.pushTabs(w);
     return true;
+  }
+
+  /** Whether some page (other than `except`) shows the run, or has it in a tab. */
+  watched(run: RunSession, except?: string): boolean {
+    if (run.shownBy(except)) return true;
+    for (const w of this.watchers) if (w.client !== except && w.runs.has(run.id)) return true;
+    return false;
+  }
+
+  /**
+   * A tab closed (or switched to another session) on page `client`: the run stops, unless another
+   * tab or page still has it.
+   */
+  release(id: string, client?: string): { closed: boolean } {
+    const run = this.runs.get(id);
+    if (!run) return { closed: false };
+    if (client) for (const w of this.watchers) if (w.client === client) w.runs.delete(id);
+    if (this.watched(run, client)) return { closed: false };
+    return { closed: this.closeRun(id) };
+  }
+
+  /** Tells a page's tabs what changed in the states of their runs. */
+  private pushTabs(w: TabWatcher, now = Date.now()): void {
+    const changed: Record<string, unknown> = {};
+    for (const id of w.runs) {
+      const run = this.runs.get(id);
+      const s = run ? run.summary(now) : { gone: true };
+      const json = JSON.stringify(s);
+      if (w.last.get(id) === json) continue;
+      w.last.set(id, json);
+      changed[id] = s;
+    }
+    if (Object.keys(changed).length) w.send({ runs: changed });
+  }
+
+  /** States that change with time alone (working → quiet, done → rest), and closing idle runs. */
+  private tick(now = Date.now()): void {
+    for (const w of this.watchers) this.pushTabs(w, now);
+    for (const run of [...this.runs.values()]) {
+      if (this.watched(run)) run.lastWatched = now;
+      else if (run.reopenable && now - run.lastWatched > IDLE_CLOSE_MS) this.closeRun(run.id);
+    }
   }
 
   // ───────────────────────────── HTTP
@@ -157,8 +224,12 @@ export class LucidlyServer {
       const run = this.runs.get(m[1]);
       if (!run) return send(res, 404, { error: 'no such run' });
       const [, , action, arg] = m;
-      if (!action && req.method === 'DELETE') return send(res, 200, { closed: this.closeRun(run.id) });
-      if (action === 'stream') return this.stream(req, res, run);
+      // With the page's id: only if no other tab or page has the run (see release).
+      if (!action && req.method === 'DELETE') {
+        const client = url.searchParams.get('client');
+        return send(res, 200, client ? this.release(run.id, client) : { closed: this.closeRun(run.id) });
+      }
+      if (action === 'stream') return this.stream(req, res, run, url.searchParams.get('client') ?? undefined);
       if (action === 'raw' && arg) {
         if (!run.engine.nodes.has(arg)) return send(res, 404, { error: 'no such node' });
         return send(res, 200, { node: arg, chunks: run.engine.raw(arg, url.searchParams.get('own') === '1') });
@@ -185,6 +256,13 @@ export class LucidlyServer {
     }
     if (path === '/api/runs' && req.method === 'GET') {
       return send(res, 200, { runs: [...this.runs.values()].map((r) => r.info()) });
+    }
+    // A page's session tabs: the states of the runs they hold, live (event "tabs").
+    if (path === '/api/tabs/stream' && req.method === 'GET') {
+      const client = url.searchParams.get('client');
+      if (!client) return send(res, 400, { error: 'client required' });
+      const ids = (url.searchParams.get('runs') ?? '').split(',').filter(Boolean);
+      return this.tabStream(req, res, client, ids);
     }
     if (path === '/api/sessions' && req.method === 'GET') {
       const all = url.searchParams.get('scope') === 'all';
@@ -224,21 +302,40 @@ export class LucidlyServer {
     return send(res, 404, { error: 'not found' });
   }
 
-  private stream(req: IncomingMessage, res: ServerResponse, run: RunSession): void {
-    res.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-store',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
-    });
-    res.write('retry: 2000\n\n');
+  private stream(req: IncomingMessage, res: ServerResponse, run: RunSession, client?: string): void {
+    sseHead(res);
+    let set = this.streams.get(run.id);
+    if (!set) this.streams.set(run.id, (set = new Set()));
+    set.add(res);
     const unsubscribe = run.subscribe((event, data) => {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    });
+    }, client);
     const ping = setInterval(() => res.write(': ping\n\n'), 15000);
     req.on('close', () => {
       clearInterval(ping);
       unsubscribe();
+      this.streams.get(run.id)?.delete(res);
+    });
+  }
+
+  private tabStream(req: IncomingMessage, res: ServerResponse, client: string, ids: string[]): void {
+    sseHead(res);
+    // A page has one tab stream: a new one (its tabs changed) replaces the old.
+    for (const w of this.watchers) if (w.client === client) this.watchers.delete(w);
+    const w: TabWatcher = { client, runs: new Set(ids), last: new Map(), send: (data) => res.write(`event: tabs\ndata: ${JSON.stringify(data)}\n\n`) };
+    this.watchers.add(w);
+    const offs = ids.map((id) => this.runs.get(id)?.onChange(() => this.pushTabs(w))).filter((f): f is () => boolean => !!f);
+    this.pushTabs(w);
+    const ping = setInterval(() => res.write(': ping\n\n'), 15000);
+    req.on('close', () => {
+      clearInterval(ping);
+      for (const off of offs) off();
+      this.watchers.delete(w);
+      const now = Date.now();
+      for (const id of ids) {
+        const run = this.runs.get(id);
+        if (run) run.lastWatched = now;
+      }
     });
   }
 
@@ -260,6 +357,16 @@ export class LucidlyServer {
     });
     res.end(body);
   }
+}
+
+function sseHead(res: ServerResponse): void {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  });
+  res.write('retry: 2000\n\n');
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {

@@ -4,6 +4,7 @@
  */
 import { Engine } from '../core/engine.ts';
 import type { LucidlyEvent } from '../core/events.ts';
+import { runSummary, type RunSummary } from '../core/summary.ts';
 import type { Source } from '../sources/source.ts';
 
 export const SAVE_FORMAT = 'lucidly-run';
@@ -30,9 +31,13 @@ export interface RunInfoSummary {
   eventCount: number;
   updatedAt?: string;
   subscribers: number;
+  /** The session file, when the run can be opened again from it (after a server restart). */
+  path?: string;
 }
 
 const FLUSH_MS = 120;
+/** Listeners to a run's summary (session tabs) hear about changes at most this often. */
+const CHANGE_MS = 250;
 
 export class RunSession {
   readonly id: string;
@@ -42,8 +47,13 @@ export class RunSession {
   readonly engine = new Engine();
   readonly events: LucidlyEvent[] = [];
   private readonly source: Source | null;
-  private subs = new Set<Send>();
+  /** Live subscribers, each with the page (client id) it belongs to, when it said. */
+  private subs = new Map<Send, string | undefined>();
   private timer: NodeJS.Timeout | null = null;
+  private changeTimer: NodeJS.Timeout | null = null;
+  private changeSubs = new Set<() => void>();
+  /** When a page last showed or listed this run (for closing runs nobody looks at any more). */
+  lastWatched = Date.now();
 
   constructor(id: string, source: Source | null, opts: { key?: string; label?: string } = {}) {
     this.id = id;
@@ -62,16 +72,21 @@ export class RunSession {
     for (const e of evs) this.events.push(e);
     this.engine.applyAll(evs);
     if (this.subs.size && !this.timer) this.timer = setTimeout(() => this.flush(), FLUSH_MS);
+    if (this.changeSubs.size && !this.changeTimer)
+      this.changeTimer = setTimeout(() => {
+        this.changeTimer = null;
+        for (const f of this.changeSubs) f();
+      }, CHANGE_MS);
   }
 
   private flush(): void {
     this.timer = null;
     const patch = this.engine.takePatch();
     if (!patch) return;
-    for (const s of this.subs) s('patch', patch);
+    for (const s of this.subs.keys()) s('patch', patch);
   }
 
-  subscribe(send: Send): () => void {
+  subscribe(send: Send, client?: string): () => void {
     // Bring existing subscribers up to date first, so the new snapshot and their state agree.
     if (this.timer) {
       clearTimeout(this.timer);
@@ -79,9 +94,37 @@ export class RunSession {
     } else {
       this.engine.takePatch();
     }
-    this.subs.add(send);
+    this.subs.set(send, client);
+    this.lastWatched = Date.now();
     send('snapshot', this.engine.snapshot());
-    return () => this.subs.delete(send);
+    return () => {
+      this.subs.delete(send);
+      this.lastWatched = Date.now();
+    };
+  }
+
+  /** Calls `f` (throttled) whenever new events arrive. */
+  onChange(f: () => void): () => void {
+    this.changeSubs.add(f);
+    return () => this.changeSubs.delete(f);
+  }
+
+  /** Whether a page other than `except` has this run open (its full stream). */
+  shownBy(except?: string): boolean {
+    for (const c of this.subs.values()) if (c === undefined || c !== except) return true;
+    return false;
+  }
+
+  /** Whether it can be opened again from its file (so closing it loses nothing). */
+  get reopenable(): boolean {
+    return !!this.source?.path;
+  }
+
+  /** The run's state for its tab, and its name: the session's title, or else its first request. */
+  summary(now = Date.now()): RunSummary & { title?: string } {
+    const r = this.engine.run;
+    const first = r.goals.length ? this.engine.nodes.get(r.goals[0])?.title : undefined;
+    return { ...runSummary(r, this.engine.nodes, now), title: r.title ?? first ?? this.label };
   }
 
   info(): RunInfoSummary {
@@ -96,6 +139,7 @@ export class RunSession {
       eventCount: r.eventCount,
       updatedAt: r.updatedAt,
       subscribers: this.subs.size,
+      ...(this.source?.path ? { path: this.source.path } : {}),
     };
   }
 
@@ -122,7 +166,9 @@ export class RunSession {
 
   close(): void {
     if (this.timer) clearTimeout(this.timer);
+    if (this.changeTimer) clearTimeout(this.changeTimer);
     this.source?.stop();
     this.subs.clear();
+    this.changeSubs.clear();
   }
 }

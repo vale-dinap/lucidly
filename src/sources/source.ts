@@ -8,6 +8,8 @@ export interface Source {
   readonly key: string;
   /** Whether the source keeps producing events after the initial read. */
   readonly live: boolean;
+  /** The file it reads, when it can be opened again from it (a session tab reopens it by this). */
+  readonly path?: string;
   start(emit: (events: LucidlyEvent[]) => void): Promise<void>;
   stop(): void;
 }
