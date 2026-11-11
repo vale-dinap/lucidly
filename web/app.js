@@ -4074,8 +4074,9 @@ document.addEventListener('change', (e) => {
 /*
  * Optional sound alerts: a short sound when a session finishes, asks you something or runs into
  * trouble, the same moments that make a tab flash (see tabsChanged), for every open tab. Off by
- * default. "Only when I'm not looking" (on by default) keeps quiet for the session on screen while
- * the page is visible. The sounds are made here (Web Audio), no files.
+ * default. Each event has its own sound, chosen from a few, or None. "Only when I'm not looking"
+ * (on by default) keeps quiet for the session on screen while the page is visible. The sounds are
+ * made here (Web Audio), no files.
  *
  * Browsers only play sound once you've interacted with the page: turning sounds on, or a Test
  * button, counts. After a reload they wait for your first click or key, and the bell says so.
@@ -4086,11 +4087,30 @@ const SND_LABEL = {
   you: ['Asked you', 'It asked you something, and waits for your answer.'],
   bad: ['In trouble', 'Failures in the current step that nothing has fixed yet.'],
 };
+/** The sounds to choose from, for any event ('none' first: no sound for it). */
+const SND_TONES = [
+  ['none', 'None'],
+  ['chime', 'Chime'],
+  ['question', 'Question'],
+  ['low', 'Low tone'],
+  ['bell', 'Bell'],
+  ['marimba', 'Marimba'],
+  ['beep', 'Beep'],
+];
+const SND_DEFAULT = { done: 'chime', you: 'question', bad: 'low' };
 S.snd = (() => {
-  const d = { on: false, kinds: { done: true, you: true, bad: true }, away: true, vol: 0.6 };
+  const d = { on: false, tones: { ...SND_DEFAULT }, away: true, vol: 0.6 };
   try {
     const v = JSON.parse(localStorage.getItem('lucidly.sound') ?? 'null');
-    if (v && typeof v === 'object') return { ...d, ...v, kinds: { ...d.kinds, ...(v.kinds ?? {}) } };
+    if (v && typeof v === 'object') {
+      const known = new Set(SND_TONES.map(([k]) => k));
+      const tones = { ...d.tones };
+      for (const k of SND_KINDS) {
+        const t = v.tones?.[k] ?? (v.kinds?.[k] === false ? 'none' : undefined);
+        if (known.has(t)) tones[k] = t;
+      }
+      return { on: !!v.on, away: v.away !== false, vol: Number(v.vol) || d.vol, tones };
+    }
   } catch {
     // Unreadable: the defaults.
   }
@@ -4137,27 +4157,41 @@ function note(c, out, at, freq, dur, type = 'sine', level = 1) {
 }
 
 /**
- * Finished: a rising three-note chime. Asked you: two notes ending high, like a question.
- * In trouble: a low falling pair.
+ * Chime: a rising three-note arpeggio. Question: two notes ending high. Low tone: a low falling
+ * pair. Bell: one struck note with its overtones. Marimba: two short wooden notes. Beep: the
+ * classic double beep.
  */
-function playSound(kind) {
+function playSound(tone) {
+  if (!tone || tone === 'none') return;
   const c = audio();
   if (!c) return;
   const out = c.createGain();
   out.gain.value = 0.32 * S.snd.vol;
   out.connect(c.destination);
   const t = c.currentTime + 0.02;
-  if (kind === 'done') {
+  if (tone === 'chime') {
     note(c, out, t, 523.25, 0.5);
     note(c, out, t + 0.11, 659.25, 0.5);
     note(c, out, t + 0.22, 783.99, 0.8);
-  } else if (kind === 'you') {
+  } else if (tone === 'question') {
     note(c, out, t, 587.33, 0.45);
     note(c, out, t + 0.2, 880, 0.9);
     note(c, out, t + 0.2, 1760, 0.4, 'sine', 0.12);
-  } else {
+  } else if (tone === 'low') {
     note(c, out, t, 311.13, 0.4, 'triangle', 0.9);
     note(c, out, t + 0.22, 233.08, 0.75, 'triangle', 0.9);
+  } else if (tone === 'bell') {
+    note(c, out, t, 659.25, 1.6, 'sine', 0.9);
+    note(c, out, t, 1318.5, 0.9, 'sine', 0.3);
+    note(c, out, t, 1810, 0.5, 'sine', 0.14);
+  } else if (tone === 'marimba') {
+    for (const [dt, f] of [[0, 783.99], [0.14, 1046.5]]) {
+      note(c, out, t + dt, f, 0.32);
+      note(c, out, t + dt, f * 4, 0.06, 'sine', 0.15);
+    }
+  } else if (tone === 'beep') {
+    note(c, out, t, 880, 0.12, 'square', 0.28);
+    note(c, out, t + 0.18, 880, 0.12, 'square', 0.28);
   }
 }
 
@@ -4168,11 +4202,11 @@ function playSound(kind) {
 function soundFor(changes) {
   const s = S.snd;
   if (!s.on) return;
-  const wanted = changes.filter(([tab, st]) => s.kinds[st] && !(s.away && !document.hidden && tab.uid === T.active)).map(([, st]) => st);
+  const wanted = changes.filter(([tab, st]) => s.tones[st] !== 'none' && !(s.away && !document.hidden && tab.uid === T.active)).map(([, st]) => st);
   const kind = ['bad', 'you', 'done'].find((k) => wanted.includes(k));
   if (!kind || Date.now() - sndLast < 2000) return;
   sndLast = Date.now();
-  playSound(kind);
+  playSound(s.tones[kind]);
 }
 
 function soundState() {
@@ -4180,8 +4214,8 @@ function soundState() {
   if (!s.on) return ['off', 'Off'];
   if (!globalThis.AudioContext && !globalThis.webkitAudioContext) return ['err', "This browser can't play sounds"];
   if (sndBlocked()) return ['wait', 'Waiting for a click on the page: browsers only play sound after you interact with it'];
-  const kinds = SND_KINDS.filter((k) => s.kinds[k]).map((k) => SND_LABEL[k][0].toLowerCase());
-  if (!kinds.length) return ['wait', 'On, but no event is chosen'];
+  const kinds = SND_KINDS.filter((k) => s.tones[k] !== 'none').map((k) => SND_LABEL[k][0].toLowerCase());
+  if (!kinds.length) return ['wait', 'On, but every event is set to None'];
   return ['on', `On: ${kinds.join(', ')}${s.away ? ", when you're not looking" : ''}`];
 }
 
@@ -4199,7 +4233,7 @@ function renderSound() {
   const s = S.snd;
   const rows = SND_KINDS.map(
     (k) =>
-      `<div class="sn-ev"><label class="wk-opt"><input type="checkbox" data-snd="kind" value="${k}"${s.kinds[k] ? ' checked' : ''} /><span><b>${SND_LABEL[k][0]}</b><small>${SND_LABEL[k][1]}</small></span></label><button type="button" class="tbtn" data-sndtest="${k}" title="Play this sound">Test</button></div>`,
+      `<div class="sn-ev"><span class="sn-l"><b>${SND_LABEL[k][0]}</b><small>${SND_LABEL[k][1]}</small></span><select data-snd="tone" data-kind="${k}" aria-label="Sound when ${SND_LABEL[k][0].toLowerCase()}">${SND_TONES.map(([v, l]) => `<option value="${v}"${s.tones[k] === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="tbtn" data-sndtest="${k}" title="Play this sound"${s.tones[k] === 'none' ? ' disabled' : ''}>Test</button></div>`,
   ).join('');
   setHTML(
     pop,
@@ -4225,17 +4259,21 @@ function toggleSound(show = $('#soundPop').hidden) {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (!(t instanceof HTMLInputElement) || !t.dataset.snd) return;
+  if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement) || !t.dataset.snd) return;
   const s = S.snd;
   if (t.dataset.snd === 'on') {
     s.on = t.checked;
     // Turning it on is the click that lets the browser play sound.
     if (s.on) audio();
-  } else if (t.dataset.snd === 'kind') s.kinds[t.value] = t.checked;
+  } else if (t.dataset.snd === 'tone') {
+    // Picking a sound plays it.
+    s.tones[t.dataset.kind] = t.value;
+    playSound(t.value);
+  }
   else if (t.dataset.snd === 'away') s.away = t.checked;
   else if (t.dataset.snd === 'vol') {
     s.vol = Number(t.value);
-    playSound('done');
+    playSound(SND_KINDS.map((k) => s.tones[k]).find((v) => v !== 'none') ?? 'chime');
   }
   saveSnd();
   renderSound();
@@ -4447,7 +4485,7 @@ document.addEventListener('click', (e) => {
   if (!on('#soundPop') && !$('#soundPop').hidden) toggleSound(false);
   if ((el = on('[data-sndtest]'))) {
     audio();
-    return playSound(el.dataset.sndtest);
+    return playSound(S.snd.tones[el.dataset.sndtest]);
   }
   if (on('#soundPop')) return;
   if (on('#emptyOpen')) return void openPicker();

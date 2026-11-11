@@ -6,7 +6,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ### Added
 
-- **Optional sound alerts**, with the bell next to keep-awake in the top bar: a short sound when a session finishes, asks you something or runs into trouble, in any of your tabs. Off by default. Each event can be turned on or off and tried with *Test*, and there is a volume slider. *Only when I'm not looking* (on by default) keeps quiet for the session on screen while the page is visible. The sounds are made in the browser, no files. Browsers only allow sound after you interact with a page: after a reload the bell turns amber until your first click or key press.
+- **Optional sound alerts**, with the bell next to keep-awake in the top bar: a short sound when a session finishes, asks you something or runs into trouble, in any of your tabs. Off by default. Each event has its own sound, chosen from a dropdown (Chime, Question, Low tone, Bell, Marimba, Beep, or None for no sound) and tried with *Test*, and there is a volume slider. *Only when I'm not looking* (on by default) keeps quiet for the session on screen while the page is visible. The sounds are made in the browser, no files. Browsers only allow sound after you interact with a page: after a reload the bell turns amber until your first click or key press.
 
 ## [0.4.0] - 2026-11-11
 
