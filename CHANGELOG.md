@@ -4,6 +4,8 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-11
+
 ### Added
 
 - **Session tabs: several sessions open at once.** Picking a session in the list still replaces the one on screen; to keep both, open it in a new tab with `Ctrl`/`⌘`-click, a middle click, the row's **New tab** button, or the **+** at the end of the tab strip. The strip shows from two tabs on, at the very top of the page, above the top bar. Each tab has a dot in the orb's colours (blue working, amber your turn, green finished, red in trouble, grey quiet), and a count of running subagents. When a tab you're not looking at asks you something, finishes or runs into trouble, it flashes a few times, then glows until you open it, and the page title counts those tabs, like "(2) Lucidly". A session already in a tab is never opened twice: picking it switches to its tab. Each tab keeps your place (view, selection, Glance spotlight, scroll) for when you come back. `[` / `]` go to the previous / next tab, and a middle click on a tab closes it. Tabs survive a reload and a server restart, which reopens their sessions.
@@ -14,6 +16,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 - **Lucidly stops following a session nobody has open.** Closing its tab (or replacing it with another session) stops it at once, unless another page has it too; a session no page has shown for 10 minutes stops by itself. Until now, every session opened kept being followed until the server stopped. A saved snapshot you loaded is kept.
 - **An earlier task in the Glance spotlight centres on its goal**, where it ended up, instead of your request; with the side panel open, the goal is the one selected, and the panel shows the task with its result highlighted.
+- **The System theme has a clearer icon**: the sun and the moon, cut along a diagonal, instead of a monitor. The Dark icon's moon now faces the same way.
 
 ## [0.3.0] - 2026-11-06
 
@@ -65,6 +68,7 @@ All notable changes to Lucidly are listed here. The format follows [Keep a Chang
 
 First public release.
 
+[0.4.0]: https://github.com/vale-dinap/lucidly/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vale-dinap/lucidly/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/vale-dinap/lucidly/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vale-dinap/lucidly/releases/tag/v0.1.0
