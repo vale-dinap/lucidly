@@ -1291,11 +1291,12 @@ pre .dh { color: var(--faint); font-weight: 600; }
 .snd[data-snd='on'] .waves { opacity: 1; }
 .snd[data-snd='wait'] { color: var(--warn); }
 .snd[data-snd='err'] { color: var(--bad); }
+#soundPop { width: 390px; }
 .sn-ev { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px 2px; }
 .sn-l { flex: 1; min-width: 0; font-size: 12.5px; }
 .sn-l b { font-weight: 560; }
 .sn-l small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; line-height: 1.35; }
-.sn-ev select { flex: none; width: 104px; height: 24px; margin-top: -2px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; cursor: pointer; }
+.sn-ev select { flex: none; width: 118px; height: 24px; margin-top: -2px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; cursor: pointer; }
 .sn-ev .tbtn:disabled { opacity: 0.4; cursor: default; }
 .sn-ev .tbtn { flex: none; height: 24px; padding: 0 9px; font-size: 12px; margin-top: -2px; }
 .sn-away { padding-top: 10px; border-top: 1px solid var(--border); }

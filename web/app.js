@@ -4087,23 +4087,14 @@ const SND_LABEL = {
   you: ['Asked you', 'It asked you something, and waits for your answer.'],
   bad: ['In trouble', 'Failures in the current step that nothing has fixed yet.'],
 };
-/** The sounds to choose from, for any event ('none' first: no sound for it). */
-const SND_TONES = [
-  ['none', 'None'],
-  ['chime', 'Chime'],
-  ['question', 'Question'],
-  ['low', 'Low tone'],
-  ['bell', 'Bell'],
-  ['marimba', 'Marimba'],
-  ['beep', 'Beep'],
-];
 const SND_DEFAULT = { done: 'chime', you: 'question', bad: 'low' };
 S.snd = (() => {
   const d = { on: false, tones: { ...SND_DEFAULT }, away: true, vol: 0.6 };
   try {
     const v = JSON.parse(localStorage.getItem('lucidly.sound') ?? 'null');
     if (v && typeof v === 'object') {
-      const known = new Set(SND_TONES.map(([k]) => k));
+      // (Names are checked against the sounds once those are defined, see SOUNDS.)
+      const known = { has: (t) => typeof t === 'string' };
       const tones = { ...d.tones };
       for (const k of SND_KINDS) {
         const t = v.tones?.[k] ?? (v.kinds?.[k] === false ? 'none' : undefined);
@@ -4143,11 +4134,13 @@ for (const ev of ['pointerdown', 'keydown'])
   addEventListener(ev, () => S.snd.on && sndBlocked() && audio(), { capture: true, passive: true });
 
 /** One soft note: a quick attack and a gentle fade. */
-function note(c, out, at, freq, dur, type = 'sine', level = 1) {
+function note(c, out, at, freq, dur, type = 'sine', level = 1, to = 0) {
   const o = c.createOscillator();
   const g = c.createGain();
   o.type = type;
   o.frequency.setValueAtTime(freq, at);
+  // A pitch that slides (a knock's thud, a rising call).
+  if (to) o.frequency.exponentialRampToValueAtTime(to, at + dur);
   g.gain.setValueAtTime(0.0001, at);
   g.gain.exponentialRampToValueAtTime(level, at + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
@@ -4156,43 +4149,74 @@ function note(c, out, at, freq, dur, type = 'sine', level = 1) {
   o.stop(at + dur + 0.05);
 }
 
+/** One held note, at full level until just before its end (alarms, sirens), its pitch sliding to `to`. */
+function hold(c, out, at, freq, dur, type = 'square', level = 0.3, to = 0) {
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, at);
+  if (to) o.frequency.linearRampToValueAtTime(to, at + dur);
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(level, at + 0.01);
+  g.gain.setValueAtTime(level, at + Math.max(0.01, dur - 0.03));
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(g).connect(out);
+  o.start(at);
+  o.stop(at + dur + 0.05);
+}
+
 /**
- * Chime: a rising three-note arpeggio. Question: two notes ending high. Low tone: a low falling
- * pair. Bell: one struck note with its overtones. Marimba: two short wooden notes. Beep: the
- * classic double beep.
+ * The sounds, in groups for the dropdown. Each draws its notes from time `t` into `out` (whose
+ * gain is the volume). Gentle ones are soft and short; questions sound like they call you; alerts
+ * are louder, longer and harsher, to be noticed from across the room.
  */
+const SND_GROUPS = [
+  [
+    'Gentle',
+    {
+      chime: ['Chime', (c, o, t) => [523.25, 659.25, 783.99].forEach((f, i) => note(c, o, t + i * 0.11, f, i === 2 ? 0.8 : 0.5))],
+      bell: ['Bell', (c, o, t) => (note(c, o, t, 659.25, 1.6, 'sine', 0.9), note(c, o, t, 1318.5, 0.9, 'sine', 0.3), note(c, o, t, 1810, 0.5, 'sine', 0.14))],
+      marimba: ['Marimba', (c, o, t) => [[0, 783.99], [0.14, 1046.5]].forEach(([dt, f]) => (note(c, o, t + dt, f, 0.32), note(c, o, t + dt, f * 4, 0.06, 'sine', 0.15)))],
+      harp: ['Harp', (c, o, t) => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => note(c, o, t + i * 0.07, f, 0.7, 'triangle', 0.7))],
+      glass: ['Glass', (c, o, t) => (note(c, o, t, 1567.98, 0.9, 'sine', 0.55), note(c, o, t + 0.12, 2093, 1.1, 'sine', 0.42))],
+    },
+  ],
+  [
+    'Questions',
+    {
+      question: ['Question', (c, o, t) => (note(c, o, t, 587.33, 0.45), note(c, o, t + 0.2, 880, 0.9), note(c, o, t + 0.2, 1760, 0.4, 'sine', 0.12))],
+      doorbell: ['Doorbell', (c, o, t) => [[0, 659.25, 0.9], [0.45, 523.25, 1.3]].forEach(([dt, f, d]) => (note(c, o, t + dt, f, d, 'sine', 0.9), note(c, o, t + dt, f * 2, d / 2, 'sine', 0.25)))],
+      ping: ['Ping', (c, o, t) => (note(c, o, t, 1318.5, 0.6, 'sine', 0.8), note(c, o, t, 2637, 0.25, 'sine', 0.15))],
+      knock: ['Knock knock', (c, o, t) => [0, 0.17].forEach((dt) => note(c, o, t + dt, 190, 0.13, 'sine', 1, 95))],
+      rising: ['Rising', (c, o, t) => (note(c, o, t, 440, 0.4, 'sine', 0.9, 880), note(c, o, t + 0.34, 880, 0.5, 'sine', 0.7))],
+    },
+  ],
+  [
+    'Alerts',
+    {
+      low: ['Low tone', (c, o, t) => (note(c, o, t, 311.13, 0.4, 'triangle', 0.9), note(c, o, t + 0.22, 233.08, 0.75, 'triangle', 0.9))],
+      beep: ['Beep', (c, o, t) => [0, 0.18].forEach((dt) => note(c, o, t + dt, 880, 0.12, 'square', 0.28))],
+      triple: ['Triple beep', (c, o, t) => [0, 0.13, 0.26].forEach((dt) => hold(c, o, t + dt, 1000, 0.09, 'square', 0.3))],
+      alarm: ['Alarm', (c, o, t) => [0, 1, 2, 3, 4, 5].forEach((i) => hold(c, o, t + i * 0.17, i % 2 ? 660 : 880, 0.15, 'square', 0.4))],
+      siren: ['Siren', (c, o, t) => [0, 0.9].forEach((dt) => (hold(c, o, t + dt, 600, 0.45, 'sawtooth', 0.28, 1200), hold(c, o, t + dt + 0.45, 1200, 0.45, 'sawtooth', 0.28, 600)))],
+      buzzer: ['Buzzer', (c, o, t) => (hold(c, o, t, 110, 0.7, 'sawtooth', 0.5), hold(c, o, t, 116, 0.7, 'square', 0.3))],
+      klaxon: ['Klaxon', (c, o, t) => [[0, [466.16, 554.37], 0.35], [0.45, [415.3, 493.88], 0.55]].forEach(([dt, fs, d]) => fs.forEach((f) => hold(c, o, t + dt, f, d, 'square', 0.3)))],
+    },
+  ],
+];
+const SOUNDS = Object.fromEntries(SND_GROUPS.flatMap(([, g]) => Object.entries(g)));
+// A saved sound that no longer exists falls back to the default.
+for (const k of SND_KINDS) if (S.snd.tones[k] !== 'none' && !SOUNDS[S.snd.tones[k]]) S.snd.tones[k] = SND_DEFAULT[k];
+
 function playSound(tone) {
-  if (!tone || tone === 'none') return;
+  const s = SOUNDS[tone];
+  if (!s) return;
   const c = audio();
   if (!c) return;
   const out = c.createGain();
   out.gain.value = 0.32 * S.snd.vol;
   out.connect(c.destination);
-  const t = c.currentTime + 0.02;
-  if (tone === 'chime') {
-    note(c, out, t, 523.25, 0.5);
-    note(c, out, t + 0.11, 659.25, 0.5);
-    note(c, out, t + 0.22, 783.99, 0.8);
-  } else if (tone === 'question') {
-    note(c, out, t, 587.33, 0.45);
-    note(c, out, t + 0.2, 880, 0.9);
-    note(c, out, t + 0.2, 1760, 0.4, 'sine', 0.12);
-  } else if (tone === 'low') {
-    note(c, out, t, 311.13, 0.4, 'triangle', 0.9);
-    note(c, out, t + 0.22, 233.08, 0.75, 'triangle', 0.9);
-  } else if (tone === 'bell') {
-    note(c, out, t, 659.25, 1.6, 'sine', 0.9);
-    note(c, out, t, 1318.5, 0.9, 'sine', 0.3);
-    note(c, out, t, 1810, 0.5, 'sine', 0.14);
-  } else if (tone === 'marimba') {
-    for (const [dt, f] of [[0, 783.99], [0.14, 1046.5]]) {
-      note(c, out, t + dt, f, 0.32);
-      note(c, out, t + dt, f * 4, 0.06, 'sine', 0.15);
-    }
-  } else if (tone === 'beep') {
-    note(c, out, t, 880, 0.12, 'square', 0.28);
-    note(c, out, t + 0.18, 880, 0.12, 'square', 0.28);
-  }
+  s[1](c, out, c.currentTime + 0.02);
 }
 
 /**
@@ -4233,7 +4257,7 @@ function renderSound() {
   const s = S.snd;
   const rows = SND_KINDS.map(
     (k) =>
-      `<div class="sn-ev"><span class="sn-l"><b>${SND_LABEL[k][0]}</b><small>${SND_LABEL[k][1]}</small></span><select data-snd="tone" data-kind="${k}" aria-label="Sound when ${SND_LABEL[k][0].toLowerCase()}">${SND_TONES.map(([v, l]) => `<option value="${v}"${s.tones[k] === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="tbtn" data-sndtest="${k}" title="Play this sound"${s.tones[k] === 'none' ? ' disabled' : ''}>Test</button></div>`,
+      `<div class="sn-ev"><span class="sn-l"><b>${SND_LABEL[k][0]}</b><small>${SND_LABEL[k][1]}</small></span><select data-snd="tone" data-kind="${k}" aria-label="Sound when ${SND_LABEL[k][0].toLowerCase()}"><option value="none"${s.tones[k] === 'none' ? ' selected' : ''}>None</option>${SND_GROUPS.map(([g, list]) => `<optgroup label="${g}">${Object.entries(list).map(([v, [l]]) => `<option value="${v}"${s.tones[k] === v ? ' selected' : ''}>${l}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="tbtn" data-sndtest="${k}" title="Play this sound"${s.tones[k] === 'none' ? ' disabled' : ''}>Test</button></div>`,
   ).join('');
   setHTML(
     pop,
